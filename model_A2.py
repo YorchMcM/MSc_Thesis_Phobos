@@ -7,7 +7,7 @@ In this script we will define model A2. It includes:
 · Simulation time: 90 days
 · Integrator: fixed-step RKDP7(8) with a time step of 5 minutes
 · Torques: Mars' center of mass on Phobos' quadrupole gravity field.
-· Quaternion/angular velocity propagator.
+· Propagator: Quaternion and angular velocity vector.
 
 '''
 
@@ -17,19 +17,17 @@ from matplotlib import use
 use('TkAgg')
 from matplotlib import pyplot as plt
 import matplotlib.font_manager as fman
-from time import time
-from os import getcwd
+# from time import time
+# from os import getcwd
 from Auxiliaries import *
 
 from tudatpy.kernel.interface import spice
-from tudatpy.kernel import numerical_simulation
-from tudatpy.kernel.numerical_simulation import environment_setup, propagation_setup, estimation_setup
+# from tudatpy.kernel import numerical_simulation
+# from tudatpy.kernel.numerical_simulation import environment_setup, propagation_setup, estimation_setup
 from tudatpy.kernel import constants
-from tudatpy.util import result2array
-from tudatpy.io import save2txt
-from tudatpy.plotting import trajectory_3d
-from tudatpy.kernel.astro.element_conversion import rotation_matrix_to_quaternion_entries as mat2quat
-from tudatpy.kernel.astro.element_conversion import quaternion_entries_to_rotation_matrix as quat2mat
+# from tudatpy.util import result2array
+# from tudatpy.io import save2txt
+# from tudatpy.plotting import trajectory_3d
 
 # The following lines set the defaults for plot fonts and font sizes.
 for font in fman.findSystemFonts(r'C:\Users\Yorch\OneDrive - Delft University of Technology\Year 2022-2023\MSc_Thesis_Phobos\Roboto_Slab'):
@@ -43,25 +41,15 @@ plt.rc('legend', fontsize = 14)
 # LOAD SPICE KERNELS
 spice.load_standard_kernels()
 
-# CREATE YOUR UNIVERSE (OR AT LEAST MARS, FOR WHAT I USE DEFAULTS FROM SPICE)
-bodies_to_create = ["Mars"]
-global_frame_origin = "Mars"
-global_frame_orientation = "J2000"
-body_settings = environment_setup.get_default_body_settings(bodies_to_create, global_frame_origin, global_frame_orientation)
-
-# BUILT-IN INFORMATION ON PHOBOS IS QUITE CRAP. WE WILL REMAKE THE WHOLE BODY OF PHOBOS OURSELVES BASED ON LE MAISTRE (2019).
-body_settings.add_empty_settings('Phobos')
-# Ephemeris and rotation models.
-body_settings.get('Phobos').rotation_model_settings = environment_setup.rotation_model.synchronous('Mars', 'J2000', 'Phobos_body_fixed')
+# CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
 numerical_states = read_vector_history_from_file('Pruebilla.txt')
-body_settings.get('Phobos').ephemeris_settings = environment_setup.ephemeris.tabulated(numerical_states, 'Mars', 'J2000')
-# Gravity field.
-body_settings.get('Phobos').gravity_field_settings = let_there_be_a_gravitational_field('Phobos_body_fixed', 'QUAD', 'Le Maistre')
-# And lastly the list of bodies is created.
-bodies = environment_setup.create_system_of_bodies(body_settings)
+phobos_ephemerides = environment_setup.ephemeris.tabulated(numerical_states, 'Mars', 'J2000')
+gravity_field_type = 'QUAD'
+gravity_field_source = 'Le Maistre'
+bodies = get_martian_system(phobos_ephemerides, gravity_field_type, gravity_field_source)
 # There are some properties that are not assigned to Phobos' body settings, but rather to the body object itself.
-bodies.get('Phobos').inertia_tensor = inertia_tensor_from_spherical_harmonic_gravity_field_settings(
-    body_settings.get('Phobos').gravity_field_settings
+bodies.get('Phobos').inertia_tensor = inertia_tensor_from_spherical_harmonic_gravity_field(
+    bodies.get('Phobos').gravity_field_model
 )
 
 bodies_to_propagate = ['Phobos']
@@ -74,7 +62,6 @@ torque_model = propagation_setup.create_torque_models(bodies, torque_settings, b
 # INTEGRATOR
 time_step = 300.0  # These are 300s = 5min
 coefficients = propagation_setup.integrator.CoefficientSets.rkdp_87
-# Esta linea se rompe. Dice que incompatible arguments.
 integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(time_step,
                                                                                   coefficients,
                                                                                   time_step,
@@ -93,25 +80,73 @@ initial_state = np.zeros(7)
 initial_state[:4] = mat2quat(initial_rotation_matrix)
 initial_state[4:] = initial_angular_velocity
 # Termination condition
-simulation_time = 90.0*constants.JULIAN_DAY
+simulation_time = 270.0*constants.JULIAN_DAY
 termination_condition = propagation_setup.propagator.time_termination(simulation_time)
 # The settings object
-print('pre')
 propagator_settings = propagation_setup.propagator.rotational(torque_model,
                                                               bodies_to_propagate,
                                                               initial_state,
                                                               initial_epoch,
                                                               integrator_settings,
                                                               termination_condition)
-print('post')
 
 # Now that we have all integration and propagation settings, we compute the undamped initial rotational state.
-# A preliminary documentation of the Python-exposed get_zero_proper_mode_rotational_state function has been redacted
-# in the complementary_documentation.txt file.
-phobos_mean_rotational_rate = 19.694 / constants.JULIAN_DAY  # In rad/s
-dissipation_times = list(np.array([10, 20, 30, 40])*constants.JULIAN_DAY)  # In seconds.
-damped_initial_state, damped_states = numerical_simulation.propagation.get_zero_proper_mode_rotational_state(bodies,
-                                                                                                             integrator_settings,
-                                                                                                             propagator_settings,
-                                                                                                             phobos_mean_rotational_rate,
-                                                                                                             dissipation_times)
+# phobos_mean_rotational_rate = 19.694 / constants.JULIAN_DAY  # In rad/day
+phobos_mean_rotational_rate = 19.6954 / constants.JULIAN_DAY  # In rad/day
+dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0, 64.0])*3600.0)  # In seconds.
+damping_results = numerical_simulation.propagation.get_zero_proper_mode_rotational_state(bodies,
+                                                                                         propagator_settings,
+                                                                                         phobos_mean_rotational_rate,
+                                                                                         dissipation_times)
+
+damped_initial_state = damping_results.initial_state
+# Now that we have the damped initial state, we propagate the rotational dynamics.
+propagator_settings = propagation_setup.propagator.rotational(torque_model,
+                                                              bodies_to_propagate,
+                                                              damped_initial_state,
+                                                              initial_epoch,
+                                                              integrator_settings,
+                                                              termination_condition)
+simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
+
+# POST-PROCESS
+mars_mu = bodies.get('Mars').gravitational_parameter
+mean_motion_history = cartesian_to_keplerian_mean_history(numerical_states, mars_mu)
+mean_motion_history = extract_element_from_history(mean_motion_history, [0])
+mean_motion_history = semi_major_axis_to_mean_motion_history(mean_motion_history, mars_mu)
+mean_motion_history = result2array(mean_motion_history)
+libration_history = result2array(get_libration_history(numerical_states, simulator.state_history, mars_mu))
+epochs_array = libration_history[:,0]
+
+# print('Average mean motion: ' + str(np.mean(mean_motion_history[:,1]) * 86400.0) + ' rad/day.')
+
+# plt.figure()
+# plt.plot(epochs_array / 86400.0, euler_angle_history[:,1] * 180.0 / np.pi, label = r'$\psi$')
+# plt.plot(epochs_array / 86400.0, euler_angle_history[:,2] * 180.0 / np.pi, label = r'$\theta$')
+# plt.plot(epochs_array / 86400.0, euler_angle_history[:,3] * 180.0 / np.pi, label = r'$\phi$')
+# plt.legend()
+# plt.grid()
+# plt.title('Euler angles')
+# plt.xlabel('Time [days since J2000]')
+# plt.ylabel('Angle [º]')
+
+# plt.figure()
+# plt.plot(epochs_array / 86400.0, mean_anomaly_history[:,1] * 180.0 / np.pi)
+# plt.grid()
+# plt.title('Mean anomaly')
+# plt.xlabel('Time [days since J2000]')
+# plt.ylabel(r'$M$ [º]')
+
+# plt.figure()
+# plt.plot(epochs_array / 86400.0, mean_motion_history[:,1] * 86400.0)
+# plt.grid()
+# plt.title('Mean motion')
+# plt.xlabel('Time [days since J2000]')
+# plt.ylabel(r'$n$ [rad/day]')
+
+plt.figure()
+plt.plot(epochs_array / 86400.0, libration_history[:,1] * 180.0 / np.pi)
+plt.grid()
+plt.title(r'Libration angle ($\omega_o$ = ' + str(phobos_mean_rotational_rate * constants.JULIAN_DAY) + ' rad/day)')
+plt.xlabel('Time [days since J2000]')
+plt.ylabel('Angle [º]')
