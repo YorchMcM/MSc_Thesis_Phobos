@@ -116,14 +116,23 @@ propagator_settings = propagation_setup.propagator.multitype(propagator_list,
                                                              initial_epoch,
                                                              termination_condition)
 
-# COMPUTATION OF DAMPED DYNAMICS
+# COMPUTATION OF DAMPED INITIAL STATE
 print('Computing damped dynamics...')
 phobos_mean_rotational_rate = 19.694 / constants.JULIAN_DAY  # In rad/s
 dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0, 64.0])*3600.0)  # In seconds.
+print('pre')
 damping_results = numerical_simulation.propagation.get_zero_proper_mode_rotational_state(bodies,
                                                                                          propagator_settings,
                                                                                          phobos_mean_rotational_rate,
                                                                                          dissipation_times)
-
+print('post')
 damped_initial_state = damping_results.initial_state
-damped_states = damping_results.forward_backward_states
+
+# SIMULATION OF DAMPED DYNAMICS
+propagator_settings = propagation_setup.propagator.rotational(torque_model,
+                                                              bodies_to_propagate,
+                                                              damped_initial_state,
+                                                              initial_epoch,
+                                                              integrator_settings,
+                                                              termination_condition)
+simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)

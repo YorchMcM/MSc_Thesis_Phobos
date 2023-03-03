@@ -40,40 +40,61 @@ gravity_field_type = 'QUAD'
 gravity_field_source = 'Le Maistre'
 bodies = get_martian_system(phobos_ephemerides, gravity_field_type, gravity_field_source)
 # There are some properties that are not assigned to Phobos' body settings, but rather to the body object itself.
-bodies.get('Phobos').rotation_model.libration_calculator = environment.DirectLongitudeLibrationCalculator(np.radians(1.1))
+libration_amplitude = 1.1  # In degrees
+libration_amplitude = np.radians(libration_amplitude)  # In radians
+bodies.get('Phobos').rotation_model.libration_calculator = environment.DirectLongitudeLibrationCalculator(libration_amplitude)
 
-bodies_to_propagate = ['Phobos']
-central_bodies = ['Mars']
+simulation_time = 90.0*constants.JULIAN_DAY
+propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time)
 
-# ACCELERATION SETTINGS
-acceleration_settings_on_phobos = dict( Mars = [propagation_setup.acceleration.mutual_spherical_harmonic_gravity(12, 12, 2, 2)] )
-acceleration_settings = { 'Phobos' : acceleration_settings_on_phobos }
-acceleration_model = propagation_setup.create_acceleration_models(bodies, acceleration_settings, bodies_to_propagate, central_bodies)
-# INTEGRATOR
-time_step = 300.0  # These are 300s = 5min
-coefficients = propagation_setup.integrator.CoefficientSets.rkdp_87
-integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(time_step,
-                                                                                  coefficients,
-                                                                                  time_step,
-                                                                                  time_step,
-                                                                                  np.inf, np.inf)
-# PROPAGATION SETTINGS
-# Initial conditions
-initial_epoch = 0.0  # This is the J2000 epoch
-initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'ECLIPJ2000', 'NONE', initial_epoch)
-# Termination condition
-simulation_time = 270.0*constants.JULIAN_DAY
-termination_condition = propagation_setup.propagator.time_termination(simulation_time)
-# The settings object
-propagator_settings = propagation_setup.propagator.translational(central_bodies,
-                                                                 acceleration_model,
-                                                                 bodies_to_propagate,
-                                                                 initial_state,
-                                                                 initial_epoch,
-                                                                 integrator_settings,
-                                                                 termination_condition)
+# bodies_to_propagate = ['Phobos']
+# central_bodies = ['Mars']
+#
+# # ACCELERATION SETTINGS
+# acceleration_settings_on_phobos = dict( Mars = [propagation_setup.acceleration.mutual_spherical_harmonic_gravity(12, 12, 2, 2)] )
+# acceleration_settings = { 'Phobos' : acceleration_settings_on_phobos }
+# acceleration_model = propagation_setup.create_acceleration_models(bodies, acceleration_settings, bodies_to_propagate, central_bodies)
+# # INTEGRATOR
+# time_step = 300.0  # These are 300s = 5min
+# coefficients = propagation_setup.integrator.CoefficientSets.rkdp_87
+# integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(time_step,
+#                                                                                   coefficients,
+#                                                                                   time_step,
+#                                                                                   time_step,
+#                                                                                   np.inf, np.inf)
+# # PROPAGATION SETTINGS
+# # Initial conditions
+# initial_epoch = 0.0  # This is the J2000 epoch
+# initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'ECLIPJ2000', 'NONE', initial_epoch)
+# # Termination condition
+# simulation_time = 90.0*constants.JULIAN_DAY
+# termination_condition = propagation_setup.propagator.time_termination(simulation_time)
+# # The settings object
+# propagator_settings = propagation_setup.propagator.translational(central_bodies,
+#                                                                  acceleration_model,
+#                                                                  bodies_to_propagate,
+#                                                                  initial_state,
+#                                                                  initial_epoch,
+#                                                                  integrator_settings,
+#                                                                  termination_condition)
 # SIMULATE DYNAMICS
 simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
 save2txt(simulator.state_history, 'Pruebilla.txt')
 
-print('FINISHED RUNNING MODEL A1.')
+# RETRIEVE LIBRATION HISTORY
+states = read_vector_history_from_file('Pruebilla.txt')
+mars_mu = bodies.get('Mars').gravitational_parameter
+libration_history = result2array(get_longitudinal_libration_history_from_libration_calculator(states,
+                                                                                              mars_mu, libration_amplitude))
+plt.figure()
+plt.plot(libration_history[:,0] / 86400.0, libration_history[:,1] * 360 / TWOPI)
+plt.title(r'Libration angle')
+plt.ylabel(r'$\theta$ [º]')
+plt.xlabel(r'Time [days since J2000]')
+plt.grid()
+
+
+
+
+
+# print('FINISHED RUNNING MODEL A1.')

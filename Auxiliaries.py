@@ -1,6 +1,8 @@
 import numpy as np
 from os import getcwd
 from Logistics import *
+from numpy.fft import rfft, rfftfreq
+# import AstroToolbox as Astro
 
 # These imports will go to both this files and all files importing this module
 # Some of these imports will not be used in the present file, but will be in others.
@@ -26,6 +28,16 @@ def quaternion_entries_to_euler_angles(quaternion: np.ndarray[4]) -> np.ndarray[
     return np.array([psi, theta, phi])
 
 
+def quaternion_to_euler_history(quaternion_history: dict) -> dict:
+
+    epochs_list = list(quaternion_history.keys())
+    euler_history = dict.fromkeys(epochs_list)
+    for epoch in epochs_list:
+        euler_history[epoch] = quaternion_entries_to_euler_angles(quaternion_history[epoch])
+
+    return euler_history
+
+
 def inertial2rsw(result: dict[float, np.ndarray], reference: dict[float, np.ndarray] = None) -> dict[float, np.ndarray]:
 
     if reference is not None and list(result.keys()) != list(reference.keys()):
@@ -42,22 +54,13 @@ def inertial2rsw(result: dict[float, np.ndarray], reference: dict[float, np.ndar
     return result_rsw
 
 
-def cartesian_to_keplerian_mean(state: np.ndarray[6], gravitational_parameter: float) -> np.ndarray[6]:
+def cartesian_to_keplerian_history(cartesian_history: dict,
+                                   gravitational_parameter: float) -> dict:
 
-    keplerian = cartesian_to_keplerian(state, gravitational_parameter)
-    e = keplerian[1]
-    theta = keplerian[-1]
-    mean_anomaly = true_to_mean_anomaly(e, theta)
-    keplerian[-1] = mean_anomaly
-
-    return keplerian
-
-
-def cartesian_to_keplerian_mean_history(result: dict, gravitational_parameter: float) -> dict:
-
-    keplerian_history = dict.fromkeys(list(result.keys()))
-    for key in list(keplerian_history.keys()):
-        keplerian_history[key] = cartesian_to_keplerian_mean(result[key], gravitational_parameter)
+    epochs_list = list(cartesian_history.keys())
+    keplerian_history = dict.fromkeys(epochs_list)
+    for key in epochs_list:
+        keplerian_history[key] = cartesian_to_keplerian(cartesian_history[key], gravitational_parameter)
 
     return keplerian_history
 
@@ -65,12 +68,34 @@ def cartesian_to_keplerian_mean_history(result: dict, gravitational_parameter: f
 def semi_major_axis_to_mean_motion_history(semi_major_axis_history: dict,
                                            gravitational_parameter: float) -> dict:
 
-    mean_motion_history = dict.fromkeys(list(semi_major_axis_history.keys()))
-    for key in list(mean_motion_history.keys()):
+    epochs_list = list(semi_major_axis_history.keys())
+    mean_motion_history = dict.fromkeys(epochs_list)
+    for key in epochs_list:
         mean_motion_history[key] = semi_major_axis_to_mean_motion(semi_major_axis_history[key],
                                                                   gravitational_parameter)
 
     return mean_motion_history
+
+
+def mean_anomaly_history_from_keplerian_history(keplerian_history: dict) -> dict:
+
+    epochs_list = list(keplerian_history.keys())
+    mean_anomaly_history = dict.fromkeys(epochs_list)
+    for key in epochs_list:
+        eccentricity = keplerian_history[key][1]
+        true_anomaly = keplerian_history[key][-1]
+        mean_anomaly_history[key] = true_to_mean_anomaly(eccentricity, true_anomaly)
+
+    return mean_anomaly_history
+
+
+def mean_anomaly_history_from_cartesian_history(cartesian_history: dict,
+                                                gravitational_parameter: float) -> dict:
+
+    keplerian_history = cartesian_to_keplerian_history(cartesian_history, gravitational_parameter)
+    mean_anomaly_history = mean_anomaly_history_from_keplerian_history(keplerian_history)
+
+    return mean_anomaly_history
 
 
 def normalize_spherical_harmonic_coefficients(cosine_coefficients: np.ndarray, sine_coefficients: np.ndarray) -> tuple:
@@ -129,6 +154,57 @@ def get_martian_system(ephemerides: environment_setup.ephemeris.EphemerisSetting
     bodies = environment_setup.create_system_of_bodies(body_settings)
 
     return bodies
+
+
+def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
+                                     simulation_time: float) -> propagation_setup.propagator.TranslationalStatePropagatorSettings:
+
+    '''
+    This function will create the propagator settings for model A1. The simulation time is given as an input. The bodies,
+    with their environment properties (ephemeris model/rotation model/gravity field/...) is also give as input. This
+    function defines the following about the accelerations and integration:
+
+    · Initial epoch: J2000 (01/01/2000 at 12:00)
+    · Integrator: fixed-step RKDP7(8) with a time step of 5 minutes
+    · Accelerations: Mars' harmonic coefficients up to degree and order 12. Phobos' quadrupole gravity field (C20 & C22).
+    · Propagator: Cartesian states
+
+    :param bodies: The SystemOfBOdies object of the simulation.
+    :param simulation_time: The duration of the simulation.
+    :return: propagato_settings
+    '''
+
+    bodies_to_propagate = ['Phobos']
+    central_bodies = ['Mars']
+
+    # ACCELERATION SETTINGS
+    acceleration_settings_on_phobos = dict(Mars=[propagation_setup.acceleration.mutual_spherical_harmonic_gravity(12, 12, 2, 2)])
+    acceleration_settings = {'Phobos': acceleration_settings_on_phobos}
+    acceleration_model = propagation_setup.create_acceleration_models(bodies, acceleration_settings, bodies_to_propagate, central_bodies)
+    # INTEGRATOR
+    time_step = 300.0  # These are 300s = 5min
+    coefficients = propagation_setup.integrator.CoefficientSets.rkdp_87
+    integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(time_step,
+                                                                                      coefficients,
+                                                                                      time_step,
+                                                                                      time_step,
+                                                                                      np.inf, np.inf)
+    # PROPAGATION SETTINGS
+    # Initial conditions
+    initial_epoch = 0.0  # This is the J2000 epoch
+    initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'ECLIPJ2000', 'NONE', initial_epoch)
+    # Termination condition
+    termination_condition = propagation_setup.propagator.time_termination(simulation_time)
+    # The settings object
+    propagator_settings = propagation_setup.propagator.translational(central_bodies,
+                                                                     acceleration_model,
+                                                                     bodies_to_propagate,
+                                                                     initial_state,
+                                                                     initial_epoch,
+                                                                     integrator_settings,
+                                                                     termination_condition)
+
+    return propagator_settings
 
 
 def get_gravitational_field(frame_name: str, field_type: str, source: str)\
@@ -205,6 +281,7 @@ def inertia_tensor_from_spherical_harmonic_gravity_field(
 
     return inertia_tensor
 
+
 def get_benchmark_integrator_settings(step_size: float) -> tuple:
 
     '''
@@ -231,27 +308,83 @@ def get_benchmark_integrator_settings(step_size: float) -> tuple:
     return base_integrator_settings, top_integrator_settings
 
 
-def quaternion_to_euler_history(quaternion_history: dict) -> dict:
+def quaternion_to_matrix_history(quaternion_history: dict) -> dict:
 
-    euler_history = dict.fromkeys(list(quaternion_history.keys()))
-    for key in list(euler_history.keys()):
-        euler_history[key] = quaternion_entries_to_euler_angles(quaternion_history[key])
+    epochs_list = list(quaternion_history.keys())
+    rotation_matrix_history = dict.fromkeys(epochs_list)
+    for key in epochs_list:
+        rotation_matrix_history[key] = quat2mat(quaternion_history[key])
 
-    return euler_history
+    return rotation_matrix_history
+
+
+# def get_libration_history(translational_history: dict,
+#                           rotational_history: dict,
+#                           gravitational_parameter: float) -> dict:
+#
+#     epochs_array = np.array(list(translational_history.keys()))
+#     mean_anomaly_history = result2array(mean_anomaly_history_from_cartesian_history(translational_history,
+#                                                                                     gravitational_parameter))
+#     quaternion_history = extract_element_from_history(rotational_history, [0, 1, 2, 3])
+#     euler_history = result2array(quaternion_to_euler_history(quaternion_history))[:,:4]
+#
+#     libration_history = np.zeros([len(epochs_array), 2])
+#     libration_history[:,0] = epochs_array
+#     libration_history[:,1] = make_between_zero_and_twopi(euler_history[:,1] + euler_history[:,3] - mean_anomaly_history[:,1] - PI)
+#
+#     return array2result(libration_history), array2result(euler_history)
+
 
 def get_libration_history(translational_history: dict,
-                          rotational_history: dict,
-                          gravitational_parameter: float) -> dict:
+                          rotational_history: dict) -> dict:
 
-    epochs_array = np.array(list(translational_history.keys()))
-    keplerian_history = cartesian_to_keplerian_mean_history(translational_history,
-                                                            gravitational_parameter)
-    mean_anomaly_history = result2array(extract_element_from_history(keplerian_history, [-1]))
+    epochs_list = list(rotational_history.keys())
     quaternion_history = extract_element_from_history(rotational_history, [0, 1, 2, 3])
-    euler_history = result2array(quaternion_to_euler_history(quaternion_history))[:,:4]
+    rotation_matrix_history = quaternion_to_matrix_history(quaternion_history)
 
-    libration_history = np.zeros([len(epochs_array), 2])
-    libration_history[:,0] = epochs_array
-    libration_history[:,1] = make_between_zero_and_twopi(euler_history[:,1] + euler_history[:,3] - mean_anomaly_history[:,1] - PI)
+    libration_history = dict.fromkeys(epochs_list)
+    for key in epochs_list:
+        rtn_to_inertial_matrix = inertial_to_rsw_rotation_matrix(translational_history[key]).T
+        r = rtn_to_inertial_matrix[:,0]
+        t = rtn_to_inertial_matrix[:,1]
+        x = rotation_matrix_history[key][:,0]
+        cosine_libration = np.dot(x, -r)
+        sine_libration = np.dot(x, t)
+        libration_history[key] = np.arctan2(sine_libration, cosine_libration)
 
-    return array2result(libration_history)
+    return libration_history
+
+
+def get_longitudinal_libration_history_from_libration_calculator(translational_history: dict,
+                                                                 gravitational_parameter: float,
+                                                                 libration_amplitude: float) -> dict:
+    epochs_list = list(translational_history.keys())
+    keplerian_history = cartesian_to_keplerian_history(translational_history, gravitational_parameter)
+    e = extract_element_from_history(keplerian_history, 1)
+    libration_history = dict.fromkeys(epochs_list)
+    for key in epochs_list:
+        r = translational_history[key][:3]
+        v = translational_history[key][3:]
+        libration_history[key] = np.dot(r, v) / np.linalg.norm(np.cross(r, v))
+        libration_history[key] = libration_history[key] * np.sqrt(1 - e[key] * e[key]) / e[key]
+        libration_history[key] = libration_history[key] * libration_amplitude
+
+    return libration_history
+
+
+def get_fourier_elements_from_history(result: dict) -> tuple:
+
+    result_array = result2array(result)
+    sample_times = result_array[:,0]
+    signal = result_array[:,1]
+
+    if len(sample_times) % 2.0 != 0.0:
+        sample_times = sample_times[:-1]
+        signal = signal[:-1]
+
+    n = len(sample_times)
+    dt = sample_times[1] - sample_times[0]
+    frequencies = rfftfreq(n, dt)
+    amplitudes = 2*abs(rfft(signal, norm = 'forward'))
+
+    return frequencies, amplitudes

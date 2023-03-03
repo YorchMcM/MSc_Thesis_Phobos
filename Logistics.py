@@ -1,5 +1,5 @@
 import numpy as np
-PI = np.pi
+from numpy import pi as PI
 TWOPI = 2*PI
 
 
@@ -9,6 +9,10 @@ def norm_rows(array: np.ndarray) -> np.ndarray:
 
 def norm_columns(array: np.ndarray) -> np.ndarray:
     return np.array([np.linalg.norm(array[:,k]) for k in range(array.shape[1])])
+
+
+def unit(x: np.ndarray) -> np.ndarray:
+    return x / np.linalg.norm(x)
 
 
 def str2vec(string: str, separator: str) -> np.ndarray:

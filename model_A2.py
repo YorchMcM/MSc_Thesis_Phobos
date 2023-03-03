@@ -42,8 +42,8 @@ plt.rc('legend', fontsize = 14)
 spice.load_standard_kernels()
 
 # CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
-numerical_states = read_vector_history_from_file('Pruebilla.txt')
-phobos_ephemerides = environment_setup.ephemeris.tabulated(numerical_states, 'Mars', 'J2000')
+imposed_trajectory = read_vector_history_from_file('Pruebilla.txt')
+phobos_ephemerides = environment_setup.ephemeris.tabulated(imposed_trajectory, 'Mars', 'J2000')
 gravity_field_type = 'QUAD'
 gravity_field_source = 'Le Maistre'
 bodies = get_martian_system(phobos_ephemerides, gravity_field_type, gravity_field_source)
@@ -80,7 +80,7 @@ initial_state = np.zeros(7)
 initial_state[:4] = mat2quat(initial_rotation_matrix)
 initial_state[4:] = initial_angular_velocity
 # Termination condition
-simulation_time = 270.0*constants.JULIAN_DAY
+simulation_time = 2.0*constants.JULIAN_DAY
 termination_condition = propagation_setup.propagator.time_termination(simulation_time)
 # The settings object
 propagator_settings = propagation_setup.propagator.rotational(torque_model,
@@ -92,7 +92,7 @@ propagator_settings = propagation_setup.propagator.rotational(torque_model,
 
 # Now that we have all integration and propagation settings, we compute the undamped initial rotational state.
 # phobos_mean_rotational_rate = 19.694 / constants.JULIAN_DAY  # In rad/day
-phobos_mean_rotational_rate = 19.6954 / constants.JULIAN_DAY  # In rad/day
+phobos_mean_rotational_rate = 19.4 / constants.JULIAN_DAY  # In rad/day
 dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0, 64.0])*3600.0)  # In seconds.
 damping_results = numerical_simulation.propagation.get_zero_proper_mode_rotational_state(bodies,
                                                                                          propagator_settings,
@@ -111,31 +111,39 @@ simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_se
 
 # POST-PROCESS
 mars_mu = bodies.get('Mars').gravitational_parameter
-mean_motion_history = cartesian_to_keplerian_mean_history(numerical_states, mars_mu)
-mean_motion_history = extract_element_from_history(mean_motion_history, [0])
-mean_motion_history = semi_major_axis_to_mean_motion_history(mean_motion_history, mars_mu)
-mean_motion_history = result2array(mean_motion_history)
-libration_history = result2array(get_libration_history(numerical_states, simulator.state_history, mars_mu))
+mean_anomaly_history = result2array( mean_anomaly_history_from_cartesian_history(imposed_trajectory, mars_mu) )
+libration_history = result2array( get_libration_history(imposed_trajectory, simulator.state_history) )
+quaternion_history = extract_element_from_history(simulator.state_history, [0, 1, 2, 3])
+euler_history = quaternion_to_euler_history(quaternion_history)
+# libration_history, euler_history = get_libration_history(imposed_trajectory, simulator.state_history, mars_mu)
+# libration_history = result2array(libration_history)
 epochs_array = libration_history[:,0]
+
+psi_freq, psi_amp = get_fourier_elements_from_history(extract_element_from_history(euler_history, 0))
+theta_freq, theta_amp = get_fourier_elements_from_history(extract_element_from_history(euler_history, 1))
+phi_freq, phi_amp = get_fourier_elements_from_history(extract_element_from_history(euler_history, 2))
+
+euler_history = result2array(euler_history)
+
 
 # print('Average mean motion: ' + str(np.mean(mean_motion_history[:,1]) * 86400.0) + ' rad/day.')
 
-# plt.figure()
-# plt.plot(epochs_array / 86400.0, euler_angle_history[:,1] * 180.0 / np.pi, label = r'$\psi$')
-# plt.plot(epochs_array / 86400.0, euler_angle_history[:,2] * 180.0 / np.pi, label = r'$\theta$')
-# plt.plot(epochs_array / 86400.0, euler_angle_history[:,3] * 180.0 / np.pi, label = r'$\phi$')
-# plt.legend()
-# plt.grid()
-# plt.title('Euler angles')
-# plt.xlabel('Time [days since J2000]')
-# plt.ylabel('Angle [º]')
+plt.figure()
+plt.plot(epochs_array / 86400.0, make_between_zero_and_twopi(euler_history[:,1]) * 180.0 / np.pi, label = r'$\psi$')
+plt.plot(epochs_array / 86400.0, make_between_zero_and_twopi(euler_history[:,2]) * 180.0 / np.pi, label = r'$\theta$')
+plt.plot(epochs_array / 86400.0, make_between_zero_and_twopi(euler_history[:,3]) * 180.0 / np.pi, label = r'$\phi$')
+plt.legend()
+plt.grid()
+plt.title('Euler angles')
+plt.xlabel('Time [days since J2000]')
+plt.ylabel('Angle [º]')
 
-# plt.figure()
-# plt.plot(epochs_array / 86400.0, mean_anomaly_history[:,1] * 180.0 / np.pi)
-# plt.grid()
-# plt.title('Mean anomaly')
-# plt.xlabel('Time [days since J2000]')
-# plt.ylabel(r'$M$ [º]')
+plt.figure()
+plt.plot(epochs_array / 86400.0, mean_anomaly_history[:,1] * 180.0 / np.pi)
+plt.grid()
+plt.title('Mean anomaly')
+plt.xlabel('Time [days since J2000]')
+plt.ylabel(r'$M$ [º]')
 
 # plt.figure()
 # plt.plot(epochs_array / 86400.0, mean_motion_history[:,1] * 86400.0)
@@ -145,8 +153,18 @@ epochs_array = libration_history[:,0]
 # plt.ylabel(r'$n$ [rad/day]')
 
 plt.figure()
-plt.plot(epochs_array / 86400.0, libration_history[:,1] * 180.0 / np.pi)
+plt.plot(epochs_array / 86400.0, make_between_zero_and_twopi(libration_history[:,1]) * 180.0 / np.pi)
 plt.grid()
 plt.title(r'Libration angle ($\omega_o$ = ' + str(phobos_mean_rotational_rate * constants.JULIAN_DAY) + ' rad/day)')
 plt.xlabel('Time [days since J2000]')
 plt.ylabel('Angle [º]')
+
+plt.figure()
+plt.semilogy(psi_freq * 86400.0, psi_amp * 360 / TWOPI, label = r'$\psi$')
+plt.semilogy(theta_freq * 86400.0, theta_amp * 360 / TWOPI, label = r'$\theta$')
+plt.semilogy(phi_freq * 86400.0, phi_amp * 360 / TWOPI, label = r'$\phi$')
+plt.title(r'Damped frequency content')
+plt.xlabel(r'$\omega$ [rad/day]')
+plt.ylabel(r'$A [º]$')
+plt.grid()
+plt.legend()
