@@ -129,10 +129,19 @@ print('post')
 damped_initial_state = damping_results.initial_state
 
 # SIMULATION OF DAMPED DYNAMICS
-propagator_settings = propagation_setup.propagator.rotational(torque_model,
-                                                              bodies_to_propagate,
-                                                              damped_initial_state,
-                                                              initial_epoch,
-                                                              integrator_settings,
-                                                              termination_condition)
+print('Building rotational propagator...')
+# Rotational propagator
+propagator_settings_rot = propagation_setup.propagator.rotational(torque_model,
+                                                                  bodies_to_propagate,
+                                                                  initial_state_rot,
+                                                                  initial_epoch,
+                                                                  integrator_settings,
+                                                                  termination_condition)
+# Multi-type propagator
+print('Putting propagators together...')
+propagator_list = [propagator_settings_trans, propagator_settings_rot]
+propagator_settings = propagation_setup.propagator.multitype(propagator_list,
+                                                             integrator_settings,
+                                                             initial_epoch,
+                                                             termination_condition)
 simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)

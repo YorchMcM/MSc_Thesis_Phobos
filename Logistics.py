@@ -53,40 +53,93 @@ def array2result(array: np.ndarray) -> dict[float, np.ndarray]:
     return result
 
 
-def make_between_zero_and_twopi(original: np.ndarray) -> np.ndarray:
+def bring_inside_bounds(original: np.ndarray, lower_bound: float,
+                        upper_bound: float, include: str = 'lower') -> np.ndarray:
+
+    if include not in ['upper', 'lower']:
+        raise ValueError('(bring_inside_bounds): Invalid value for argument "include". Only "upper" and "lower" are allowed. Provided: ' + include)
 
     dim_num = len(original.shape)
 
-    if dim_num == 1: return make_between_zero_and_twopi_single_dim(original)
-    elif dim_num == 2: return make_between_zero_and_twopi_double_dim(original)
-    else: raise ValueError('(make_between_zero_and_twopi): Invalid input array.')
+    if dim_num == 1: return bring_inside_bounds_single_dim(original, lower_bound, upper_bound, include)
+    elif dim_num == 2: return bring_inside_bounds_double_dim(original, lower_bound, upper_bound, include)
+    else: raise ValueError('(bring_inside_bounds): Invalid input array.')
 
 
-def make_between_zero_and_twopi_single_dim(original: np.ndarray) -> np.ndarray:
+def bring_inside_bounds_single_dim(original: np.ndarray, lower_bound: float,
+                                   upper_bound: float, include: str = 'lower') -> np.ndarray:
 
+    interval_length = upper_bound - lower_bound
     new = np.zeros_like(original)
     for idx in range(len(new)):
         new[idx] = original[idx]
-        while new[idx] < 0.0: new[idx] = new[idx] + TWOPI
-        while new[idx] >= TWOPI : new[idx] = new[idx] - TWOPI
+        if include == 'lower':
+            while new[idx] <= lower_bound : new[idx] = new[idx] + interval_length
+            while new[idx] > upper_bound : new[idx] = new[idx] - interval_length
+        if include == 'upper':
+            while new[idx] < lower_bound : new[idx] = new[idx] + interval_length
+            while new[idx] >= upper_bound : new[idx] = new[idx] - interval_length
 
     return new
 
 
-def make_between_zero_and_twopi_double_dim(original: np.ndarray) -> np.ndarray:
+def bring_inside_bounds_double_dim(original: np.ndarray, lower_bound: float,
+                                   upper_bound: float, include: str = 'lower') -> np.ndarray:
 
+    interval_length = upper_bound - lower_bound
     lengths = original.shape
     new = np.zeros_like(original)
     for idx0 in range(lengths[0]):
         for idx1 in range(lengths[1]):
             new[idx0, idx1] = original[idx0, idx1]
-            while new[idx0, idx1] < 0.0: new[idx0, idx1] = new[idx0, idx1] + TWOPI
-            while new[idx0, idx1] >= TWOPI: new[idx0, idx1] = new[idx0, idx1] - TWOPI
+            if include == 'lower':
+                while new[idx0, idx1] <= lower_bound : new[idx0, idx1] = new[idx0, idx1] + interval_length
+                while new[idx0, idx1] > upper_bound : new[idx0, idx1] = new[idx0, idx1] - interval_length
+            if include == 'upper':
+                while new[idx0, idx1] < lower_bound : new[idx0, idx1] = new[idx0, idx1] + interval_length
+                while new[idx0, idx1] >= upper_bound : new[idx0, idx1] = new[idx0, idx1] - interval_length
 
     return new
 
 
-def extract_element_from_history(history: dict, index) -> dict:
+def remove_jumps(original: np.ndarray, jump_height: float, margin: float = 0.03) -> np.ndarray:
+
+    dim_num = len(original.shape)
+
+    if dim_num == 1: return remove_jumps_single_dim(original, jump_height)
+    elif dim_num == 2: return remove_jumps_double_dim(original, jump_height)
+    else: raise ValueError('(make_monotonic): Invalid input array.')
+
+
+def remove_jumps_single_dim(original: np.ndarray, jump_height: float, margin: float = 0.03) -> np.ndarray:
+
+    new = original.copy()
+    u = 1.0 - margin
+    l = -1.0 + margin
+    for idx in range(len(new)-1):
+        d = (new[idx+1] - new[idx]) / jump_height
+        # print('d = ' + str(d))
+        if d <= l: new[idx+1:] = new[idx+1:] + jump_height
+        if d >= u: new[idx+1:] = new[idx+1:] - jump_height
+
+    return new
+
+
+def remove_jumps_double_dim(original: np.array, jump_height: float, margin: float = 0.03) -> np.ndarray:
+
+    new = original.copy()
+    u = 1.0 - margin
+    l = -1.0 + margin
+    for col in range(new.shape[1]):
+        for row in range(new.shape[0]-1):
+            d = ( new[row+1,col] - new[row,col] ) / jump_height
+            if d <= l: new[row+1:,col] = new[row+1:,col] + jump_height
+            if d >= u: new[row+1:,col] = new[row+1:,col] - jump_height
+
+    return new
+
+
+def extract_elements_from_history(history: dict, index) -> dict:
 
     if type(index) is int: index = [index]
     elif type(index) is list: pass

@@ -2,6 +2,7 @@ import numpy as np
 from os import getcwd
 from Logistics import *
 from numpy.fft import rfft, rfftfreq
+from numpy.polynomial.polynomial import polyfit
 # import AstroToolbox as Astro
 
 # These imports will go to both this files and all files importing this module
@@ -65,13 +66,13 @@ def cartesian_to_keplerian_history(cartesian_history: dict,
     return keplerian_history
 
 
-def semi_major_axis_to_mean_motion_history(semi_major_axis_history: dict,
-                                           gravitational_parameter: float) -> dict:
+def mean_motion_history_from_keplerian_history(keplerian_history: dict,
+                                               gravitational_parameter: float) -> dict:
 
-    epochs_list = list(semi_major_axis_history.keys())
+    epochs_list = list(keplerian_history.keys())
     mean_motion_history = dict.fromkeys(epochs_list)
     for key in epochs_list:
-        mean_motion_history[key] = semi_major_axis_to_mean_motion(semi_major_axis_history[key],
+        mean_motion_history[key] = semi_major_axis_to_mean_motion(keplerian_history[key][0],
                                                                   gravitational_parameter)
 
     return mean_motion_history
@@ -115,7 +116,8 @@ def normalize_spherical_harmonic_coefficients(cosine_coefficients: np.ndarray, s
 
 def get_martian_system(ephemerides: environment_setup.ephemeris.EphemerisSettings,
                        field_type: str,
-                       field_source: str) -> environment.SystemOfBodies:
+                       field_source: str,
+                       scaled_amplitude: float = 0.0) -> environment.SystemOfBodies:
 
     '''
     This function will create the "bodies" object, just so we don't have all this lines in all models. Phobos is to be
@@ -125,21 +127,24 @@ def get_martian_system(ephemerides: environment_setup.ephemeris.EphemerisSetting
 
     Main differences between models include ephemerides models, rotational models, and gravitational fields. The first
     and last are provided as inputs, so care is to be taken outside of this function. On the other hand, the rotational
-    model is always set as synchronous. For model A1, the libration is added to the Body object itself, i.e. it is done
-    outside of this function after calling it. For all other models (A2, B and C), the rotational model is irrelevant
-    because Phobos' rotational dynamics are integrated. An inertia matrix is required for this, to be assigned to the
-    Body object outside of this function.
+    model is always set as synchronous. For model A1, the libration is added to the Body object itself, after creating
+    the ListOfBodies object, but still inside this function. For all other models (A2, B and C), the rotational model is
+    irrelevant because Phobos' rotational dynamics are integrated. An inertia matrix is required for this, and is also
+    assigned inside this function. Note that this attribute of Phobos will not be used in model A1.
+
+    The result is a Phobos with the specified gravity field, a rotation model, and an inertia tensor.
 
     :param ephemerides: The ephemerides type to be assigned to Phobos.
     :param field_type: Either 'QUAD' or 'FULL'. The former creates the C20 and C22 coefficients. THe latter up to (4,4).
     :param field_source: Where to take the coefficients from. Two sources are possible: Le Maistre (2019) and Scheeres (2019).
+    :param scaled_amplitude: The scaled libration amplitude. Note that the rotation model will ONLY be used in model A1.
     :return: bodies
     '''
 
     # WE FIRST CREATE MARS.
     bodies_to_create = ["Mars"]
     global_frame_origin = "Mars"
-    global_frame_orientation = "J2000"
+    global_frame_orientation = "Mars"
     body_settings = environment_setup.get_default_body_settings(bodies_to_create, global_frame_origin, global_frame_orientation)
 
     # WE THEN CREATE PHOBOS USING THE INPUTS.
@@ -150,14 +155,24 @@ def get_martian_system(ephemerides: environment_setup.ephemeris.EphemerisSetting
     # Gravity field.
     body_settings.get('Phobos').gravity_field_settings = get_gravitational_field('Phobos_body_fixed', field_type, field_source)
 
-    # AND LASTLY THE LIST OD BODIES IS CREATED.
+    # AND LASTLY THE LIST OF BODIES IS CREATED.
     bodies = environment_setup.create_system_of_bodies(body_settings)
+
+    # There are some properties that are not assigned to Phobos' body settings, but rather to the body object itself.
+    # One is the rotation model (only used in model A1).
+    bodies.get('Phobos').rotation_model.libration_calculator = environment.DirectLongitudeLibrationCalculator(scaled_amplitude)
+    # Another is the inertia tensor (useless in model A1).
+    bodies.get('Phobos').inertia_tensor = inertia_tensor_from_spherical_harmonic_gravity_field(
+        bodies.get('Phobos').gravity_field_model
+    )
 
     return bodies
 
 
 def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
-                                     simulation_time: float) -> propagation_setup.propagator.TranslationalStatePropagatorSettings:
+                                     simulation_time: float,
+                                     dependent_variables: list[propagation_setup.dependent_variable.PropagationDependentVariables] = [])\
+        -> propagation_setup.propagator.TranslationalStatePropagatorSettings:
 
     '''
     This function will create the propagator settings for model A1. The simulation time is given as an input. The bodies,
@@ -171,6 +186,7 @@ def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
 
     :param bodies: The SystemOfBOdies object of the simulation.
     :param simulation_time: The duration of the simulation.
+    :param dependent_variables: The list of dependent variables to save during propagation.
     :return: propagato_settings
     '''
 
@@ -191,7 +207,7 @@ def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
                                                                                       np.inf, np.inf)
     # PROPAGATION SETTINGS
     # Initial conditions
-    initial_epoch = 0.0  # This is the J2000 epoch
+    initial_epoch = 13035.0  # This is (aproximately) the first perisapsis passage since J2000
     initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'ECLIPJ2000', 'NONE', initial_epoch)
     # Termination condition
     termination_condition = propagation_setup.propagator.time_termination(simulation_time)
@@ -202,9 +218,64 @@ def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
                                                                      initial_state,
                                                                      initial_epoch,
                                                                      integrator_settings,
-                                                                     termination_condition)
+                                                                     termination_condition,
+                                                                     output_variables = dependent_variables)
 
     return propagator_settings
+
+
+def get_model_a2_propagator_settings(bodies: environment.SystemOfBodies,
+                                     simulation_time: float,
+                                     initial_state: np.ndarray,
+                                     dependent_variables: list[propagation_setup.dependent_variable.PropagationDependentVariables] = [])\
+        -> propagation_setup.propagator.TranslationalStatePropagatorSettings:
+
+    bodies_to_propagate = ['Phobos']
+
+    # TORQUE SETTINGS
+    torque_settings_on_phobos = dict(Mars=[propagation_setup.torque.spherical_harmonic_gravitational(2, 2)])
+    torque_settings = {'Phobos': torque_settings_on_phobos}
+    torque_model = propagation_setup.create_torque_models(bodies, torque_settings, bodies_to_propagate)
+
+    # INTEGRATOR
+    time_step = 300.0  # These are 300s = 5min
+    coefficients = propagation_setup.integrator.CoefficientSets.rkdp_87
+    integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(time_step,
+                                                                                      coefficients,
+                                                                                      time_step,
+                                                                                      time_step,
+                                                                                      np.inf, np.inf)
+    # PROPAGATION SETTINGS
+    # Initial conditions
+    initial_epoch = 13035.0  # This is (aproximately) the first perisapsis passage since J2000
+    # Termination condition
+    termination_condition = propagation_setup.propagator.time_termination(simulation_time)
+    # The settings object
+    propagator_settings = propagation_setup.propagator.rotational(torque_model,
+                                                                  bodies_to_propagate,
+                                                                  initial_state,
+                                                                  initial_epoch,
+                                                                  integrator_settings,
+                                                                  termination_condition,
+                                                                  output_variables = dependent_variables)
+
+    return propagator_settings
+
+
+def get_fake_initial_state(bodies: environment.SystemOfBodies,
+                           initial_epoch: float,
+                           omega: float) -> np.ndarray:
+
+    initial_translational_state = bodies.get('Phobos').state_in_base_frame_from_ephemeris(initial_epoch)
+    rtn_to_inertial_matrx = inertial_to_rsw_rotation_matrix(initial_translational_state).T
+    initial_rotation_matrix = rtn_to_inertial_matrx.copy()
+    initial_rotation_matrix[:,:2] = -initial_rotation_matrix[:,:2]
+    initial_orientation_quaternion = mat2quat(initial_rotation_matrix)
+    initial_angular_velocity = np.zeros(3)
+    initial_angular_velocity[-1] = omega
+    initial_state = np.concatenate((initial_orientation_quaternion, initial_angular_velocity))
+
+    return initial_state
 
 
 def get_gravitational_field(frame_name: str, field_type: str, source: str)\
@@ -339,7 +410,7 @@ def get_libration_history(translational_history: dict,
                           rotational_history: dict) -> dict:
 
     epochs_list = list(rotational_history.keys())
-    quaternion_history = extract_element_from_history(rotational_history, [0, 1, 2, 3])
+    quaternion_history = extract_elements_from_history(rotational_history, [0, 1, 2, 3])
     rotation_matrix_history = quaternion_to_matrix_history(quaternion_history)
 
     libration_history = dict.fromkeys(epochs_list)
@@ -360,7 +431,7 @@ def get_longitudinal_libration_history_from_libration_calculator(translational_h
                                                                  libration_amplitude: float) -> dict:
     epochs_list = list(translational_history.keys())
     keplerian_history = cartesian_to_keplerian_history(translational_history, gravitational_parameter)
-    e = extract_element_from_history(keplerian_history, 1)
+    e = extract_elements_from_history(keplerian_history, 1)
     libration_history = dict.fromkeys(epochs_list)
     for key in epochs_list:
         r = translational_history[key][:3]
@@ -372,7 +443,8 @@ def get_longitudinal_libration_history_from_libration_calculator(translational_h
     return libration_history
 
 
-def get_fourier_elements_from_history(result: dict) -> tuple:
+def get_fourier_elements_from_history(result: dict,
+                                      clean_signal: list = [0.0, 0]) -> tuple:
 
     result_array = result2array(result)
     sample_times = result_array[:,0]
@@ -381,6 +453,11 @@ def get_fourier_elements_from_history(result: dict) -> tuple:
     if len(sample_times) % 2.0 != 0.0:
         sample_times = sample_times[:-1]
         signal = signal[:-1]
+
+    if clean_signal[0] != 0.0: signal = remove_jumps(signal, clean_signal[0])
+    if clean_signal[1] != 0:
+        coeffs = polyfit(sample_times, signal, clean_signal[1])
+        signal = signal - coeffs[0] - coeffs[1] * sample_times
 
     n = len(sample_times)
     dt = sample_times[1] - sample_times[0]

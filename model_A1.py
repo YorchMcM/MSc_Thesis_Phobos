@@ -38,63 +38,81 @@ spice.load_standard_kernels()
 phobos_ephemerides = environment_setup.ephemeris.direct_spice('Mars', 'J2000')
 gravity_field_type = 'QUAD'
 gravity_field_source = 'Le Maistre'
-bodies = get_martian_system(phobos_ephemerides, gravity_field_type, gravity_field_source)
-# There are some properties that are not assigned to Phobos' body settings, but rather to the body object itself.
 libration_amplitude = 1.1  # In degrees
-libration_amplitude = np.radians(libration_amplitude)  # In radians
-bodies.get('Phobos').rotation_model.libration_calculator = environment.DirectLongitudeLibrationCalculator(libration_amplitude)
+ecc_scale = 0.015034167790105173
+# libration_amplitude = 5.0  # In degrees
+# ecc_scale = 0.015034568572550524
+scaled_amplitude = np.radians(libration_amplitude) / ecc_scale
+bodies = get_martian_system(phobos_ephemerides, gravity_field_type, gravity_field_source, scaled_amplitude)
 
+# DEFINE PROPAGATION
 simulation_time = 90.0*constants.JULIAN_DAY
-propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time)
+dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to_body_fixed_313_euler_angles('Phobos'),  # 0, 1, 2
+                                propagation_setup.dependent_variable.central_body_fixed_spherical_position('Mars', 'Phobos'),  # 3, 4, 5
+                                propagation_setup.dependent_variable.keplerian_state('Phobos', 'Mars')]  # 6, 7, 8, 9, 10, 11
+propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time,
+                                                       dependent_variables_to_save)
 
-# bodies_to_propagate = ['Phobos']
-# central_bodies = ['Mars']
-#
-# # ACCELERATION SETTINGS
-# acceleration_settings_on_phobos = dict( Mars = [propagation_setup.acceleration.mutual_spherical_harmonic_gravity(12, 12, 2, 2)] )
-# acceleration_settings = { 'Phobos' : acceleration_settings_on_phobos }
-# acceleration_model = propagation_setup.create_acceleration_models(bodies, acceleration_settings, bodies_to_propagate, central_bodies)
-# # INTEGRATOR
-# time_step = 300.0  # These are 300s = 5min
-# coefficients = propagation_setup.integrator.CoefficientSets.rkdp_87
-# integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(time_step,
-#                                                                                   coefficients,
-#                                                                                   time_step,
-#                                                                                   time_step,
-#                                                                                   np.inf, np.inf)
-# # PROPAGATION SETTINGS
-# # Initial conditions
-# initial_epoch = 0.0  # This is the J2000 epoch
-# initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'ECLIPJ2000', 'NONE', initial_epoch)
-# # Termination condition
-# simulation_time = 90.0*constants.JULIAN_DAY
-# termination_condition = propagation_setup.propagator.time_termination(simulation_time)
-# # The settings object
-# propagator_settings = propagation_setup.propagator.translational(central_bodies,
-#                                                                  acceleration_model,
-#                                                                  bodies_to_propagate,
-#                                                                  initial_state,
-#                                                                  initial_epoch,
-#                                                                  integrator_settings,
-#                                                                  termination_condition)
 # SIMULATE DYNAMICS
 simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
 save2txt(simulator.state_history, 'Pruebilla.txt')
 
-# RETRIEVE LIBRATION HISTORY
-states = read_vector_history_from_file('Pruebilla.txt')
+# RETRIEVE & PLOT EULER ANGLES AND SUB-MARTIAN POINT
 mars_mu = bodies.get('Mars').gravitational_parameter
-libration_history = result2array(get_longitudinal_libration_history_from_libration_calculator(states,
-                                                                                              mars_mu, libration_amplitude))
+epochs_array = np.array(list(simulator.state_history.keys()))
+euler_history = result2array(extract_elements_from_history(simulator.dependent_variable_history, [0, 1, 2]))
+euler_history[:,1:] = bring_inside_bounds(euler_history[:,1:] * (-1.0), 0.0, TWOPI)
+submartian_point = result2array(extract_elements_from_history(simulator.dependent_variable_history, [4, 5]))
+submartian_point[:,1:] = bring_inside_bounds(submartian_point[:,1:], -PI, PI, include = 'upper')
+keplerian_history = extract_elements_from_history(simulator.dependent_variable_history, [6, 7, 8, 9, 10, 11])
+eccentricity = result2array(extract_elements_from_history(keplerian_history, 1))[:,1]
+mean_motion = result2array(mean_motion_history_from_keplerian_history(keplerian_history, mars_mu))[:,1]
+
+
 plt.figure()
-plt.plot(libration_history[:,0] / 86400.0, libration_history[:,1] * 360 / TWOPI)
-plt.title(r'Libration angle')
-plt.ylabel(r'$\theta$ [º]')
-plt.xlabel(r'Time [days since J2000]')
+plt.plot(epochs_array / 86400.0, euler_history[:,1] * 180.0 / np.pi, label = r'$\phi$')
+plt.plot(epochs_array / 86400.0, euler_history[:,2] * 180.0 / np.pi, label = r'$\theta$')
+plt.plot(epochs_array / 86400.0, euler_history[:,3] * 180.0 / np.pi, label = r'$\psi$')
+plt.legend()
 plt.grid()
+plt.title('Euler angles')
+plt.xlabel('Time [days since J2000]')
+plt.ylabel('Angle [º]')
 
+plt.figure()
+plt.plot(epochs_array / 86400.0, submartian_point[:,1] * 360.0 / TWOPI, label = r'$Lat$')
+plt.plot(epochs_array / 86400.0, submartian_point[:,2] * 360.0 / TWOPI, label = r'$Lon$')
+plt.legend()
+plt.grid()
+plt.title('Sub-martian point')
+plt.xlabel('Time [days since J2000]')
+plt.ylabel('Coordinate [º]')
 
+plt.figure()
+plt.scatter(submartian_point[:,2] * 360.0 / TWOPI, submartian_point[:,1] * 360.0 / TWOPI)
+plt.grid()
+plt.ylim([-90.0, 90.0])
+plt.xlim([-180.0, 180.0])
+plt.title('Sub-martian point')
+plt.xlabel('LON [º]')
+plt.ylabel('LAT [º]')
 
+# plt.figure()
+# plt.plot(epochs_array / 86400.0, eccentricity)
+# plt.grid()
+# plt.title('Eccentricity')
+# plt.xlabel('Time [days since J2000]')
+# plt.ylabel(r'$e$ [-]')
 
+plt.figure()
+plt.plot(epochs_array / 86400.0, mean_motion * 86400.0)
+plt.grid()
+plt.title('Mean motion')
+plt.xlabel('Time [days since J2000]')
+plt.ylabel(r'$n$ [rad/day]')
 
-# print('FINISHED RUNNING MODEL A1.')
+# print('Libration amplitude: ' + str(libration_amplitude))
+# print('Pre propagation eccentricity: ' + str(ecc_scale))
+# print('Post propagation eccentricity: ' + str(np.mean(eccentricity)))
+# print('Increment: ' + str(np.mean(eccentricity) - ecc_scale))
+# print('Absolute change: ' + str(abs(np.mean(eccentricity) - ecc_scale)))
