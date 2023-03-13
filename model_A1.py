@@ -12,18 +12,19 @@ In this script we will define model A1. It includes:
 '''
 
 # IMPORTS
-import numpy as np
 from matplotlib import use
 use('TkAgg')
 from matplotlib import pyplot as plt
 import matplotlib.font_manager as fman
 from Auxiliaries import *
 
+sys.path.insert(0, '/home/yorch/tudat-bundle/cmake-build-release/tudatpy')
+
 from tudatpy.kernel.interface import spice
 from tudatpy.io import save2txt
 
 # The following lines set the defaults for plot fonts and font sizes.
-for font in fman.findSystemFonts(r'C:\Users\Yorch\OneDrive - Delft University of Technology\Year 2022-2023\MSc_Thesis_Phobos\Roboto_Slab'):
+for font in fman.findSystemFonts(r'/home/yorch/thesis/Roboto_Slab'):
     fman.fontManager.addfont(font)
 
 plt.rc('font', family = 'Roboto Slab')
@@ -35,13 +36,12 @@ plt.rc('legend', fontsize = 14)
 spice.load_standard_kernels()
 
 # CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
+# The ephemeris model is irrelevant because the translational dynamics of Phobos will be propagated. But tudat complains if Phobos doesn't have one.
 phobos_ephemerides = environment_setup.ephemeris.direct_spice('Mars', 'J2000')
 gravity_field_type = 'QUAD'
 gravity_field_source = 'Le Maistre'
 libration_amplitude = 1.1  # In degrees
 ecc_scale = 0.015034167790105173
-# libration_amplitude = 5.0  # In degrees
-# ecc_scale = 0.015034568572550524
 scaled_amplitude = np.radians(libration_amplitude) / ecc_scale
 bodies = get_martian_system(phobos_ephemerides, gravity_field_type, gravity_field_source, scaled_amplitude)
 
@@ -49,7 +49,8 @@ bodies = get_martian_system(phobos_ephemerides, gravity_field_type, gravity_fiel
 simulation_time = 90.0*constants.JULIAN_DAY
 dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to_body_fixed_313_euler_angles('Phobos'),  # 0, 1, 2
                                 propagation_setup.dependent_variable.central_body_fixed_spherical_position('Mars', 'Phobos'),  # 3, 4, 5
-                                propagation_setup.dependent_variable.keplerian_state('Phobos', 'Mars')]  # 6, 7, 8, 9, 10, 11
+                                propagation_setup.dependent_variable.keplerian_state('Phobos', 'Mars'),  # 6, 7, 8, 9, 10, 11
+                                propagation_setup.dependent_variable.central_body_fixed_spherical_position('Phobos', 'Mars') ]  # 12, 13, 14
 propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time,
                                                        dependent_variables_to_save)
 
@@ -57,31 +58,56 @@ propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time,
 simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
 save2txt(simulator.state_history, 'Pruebilla.txt')
 
-# RETRIEVE & PLOT EULER ANGLES AND SUB-MARTIAN POINT
+# POST PROCESS (CHECKS)
 mars_mu = bodies.get('Mars').gravitational_parameter
+dependents = simulator.dependent_variable_history
 epochs_array = np.array(list(simulator.state_history.keys()))
-euler_history = result2array(extract_elements_from_history(simulator.dependent_variable_history, [0, 1, 2]))
-euler_history[:,1:] = bring_inside_bounds(euler_history[:,1:] * (-1.0), 0.0, TWOPI)
-submartian_point = result2array(extract_elements_from_history(simulator.dependent_variable_history, [4, 5]))
-submartian_point[:,1:] = bring_inside_bounds(submartian_point[:,1:], -PI, PI, include = 'upper')
-keplerian_history = extract_elements_from_history(simulator.dependent_variable_history, [6, 7, 8, 9, 10, 11])
-eccentricity = result2array(extract_elements_from_history(keplerian_history, 1))[:,1]
-mean_motion = result2array(mean_motion_history_from_keplerian_history(keplerian_history, mars_mu))[:,1]
 
+# Trajectory
+trajectory_3d(simulator.state_history, ['Phobos'], 'Mars')
+
+# Orbit does not blow up.
+keplerian_history = extract_elements_from_history(simulator.dependent_variable_history, [6, 7, 8, 9, 10, 11])
+plot_kepler_elements(keplerian_history)
+
+# Orbit is equatorial
+sub_phobian_point = result2array(extract_elements_from_history(simulator.dependent_variable_history, [13, 14]))
+sub_phobian_point[:,1:] = bring_inside_bounds(sub_phobian_point[:,1:], -PI, PI, include = 'upper')
 
 plt.figure()
-plt.plot(epochs_array / 86400.0, euler_history[:,1] * 180.0 / np.pi, label = r'$\phi$')
-plt.plot(epochs_array / 86400.0, euler_history[:,2] * 180.0 / np.pi, label = r'$\theta$')
-plt.plot(epochs_array / 86400.0, euler_history[:,3] * 180.0 / np.pi, label = r'$\psi$')
+plt.scatter(sub_phobian_point[:,2] * 360.0 / TWOPI, sub_phobian_point[:,1] * 360.0 / TWOPI)
+plt.grid()
+plt.title('Sub-phobian point')
+plt.xlabel('LON [º]')
+plt.ylabel('LAT [º]')
+
+plt.figure()
+plt.plot(epochs_array / 86400.0, sub_phobian_point[:,1] * 360.0 / TWOPI, label = r'$Lat$')
+plt.plot(epochs_array / 86400.0, sub_phobian_point[:,2] * 360.0 / TWOPI, label = r'$Lon$')
 plt.legend()
 plt.grid()
-plt.title('Euler angles')
+plt.title('Sub-phobian point')
 plt.xlabel('Time [days since J2000]')
-plt.ylabel('Angle [º]')
+plt.ylabel('Coordinate [º]')
+
+# Phobos' x axis points towards Mars with a once-per-orbit longitudinal libration with amplitude as specified above.
+sub_martian_point = result2array(extract_elements_from_history(simulator.dependent_variable_history, [4, 5]))
+sub_martian_point[:,1:] = bring_inside_bounds(sub_martian_point[:,1:], -PI, PI, include = 'upper')
+libration_history = extract_elements_from_history(simulator.dependent_variable_history, 5)
+libration_freq, libration_amp = get_fourier_elements_from_history(libration_history)
+# phobos_mean_rotational_rate = 0.00022785759213999574  # In rad/s
+phobos_mean_rotational_rate = 0.000227995  # In rad/s
 
 plt.figure()
-plt.plot(epochs_array / 86400.0, submartian_point[:,1] * 360.0 / TWOPI, label = r'$Lat$')
-plt.plot(epochs_array / 86400.0, submartian_point[:,2] * 360.0 / TWOPI, label = r'$Lon$')
+plt.scatter(sub_martian_point[:,2] * 360.0 / TWOPI, sub_martian_point[:,1] * 360.0 / TWOPI)
+plt.grid()
+plt.title('Sub-martian point')
+plt.xlabel('LON [º]')
+plt.ylabel('LAT [º]')
+
+plt.figure()
+plt.plot(epochs_array / 86400.0, sub_martian_point[:,1] * 360.0 / TWOPI, label = r'$Lat$')
+plt.plot(epochs_array / 86400.0, sub_martian_point[:,2] * 360.0 / TWOPI, label = r'$Lon$')
 plt.legend()
 plt.grid()
 plt.title('Sub-martian point')
@@ -89,30 +115,11 @@ plt.xlabel('Time [days since J2000]')
 plt.ylabel('Coordinate [º]')
 
 plt.figure()
-plt.scatter(submartian_point[:,2] * 360.0 / TWOPI, submartian_point[:,1] * 360.0 / TWOPI)
+plt.plot(libration_freq * 86400.0, libration_amp * 360 / TWOPI)
+plt.axline((phobos_mean_rotational_rate * 86400.0, 0),(phobos_mean_rotational_rate * 86400.0, 1), ls = 'dashed', c = 'r', label = 'Phobian mean motion')
+plt.title(r'Libration frequency content')
+plt.xlabel(r'$\omega$ [rad/day]')
+plt.ylabel(r'$A [º]$')
 plt.grid()
-plt.ylim([-90.0, 90.0])
-plt.xlim([-180.0, 180.0])
-plt.title('Sub-martian point')
-plt.xlabel('LON [º]')
-plt.ylabel('LAT [º]')
-
-# plt.figure()
-# plt.plot(epochs_array / 86400.0, eccentricity)
-# plt.grid()
-# plt.title('Eccentricity')
-# plt.xlabel('Time [days since J2000]')
-# plt.ylabel(r'$e$ [-]')
-
-plt.figure()
-plt.plot(epochs_array / 86400.0, mean_motion * 86400.0)
-plt.grid()
-plt.title('Mean motion')
-plt.xlabel('Time [days since J2000]')
-plt.ylabel(r'$n$ [rad/day]')
-
-# print('Libration amplitude: ' + str(libration_amplitude))
-# print('Pre propagation eccentricity: ' + str(ecc_scale))
-# print('Post propagation eccentricity: ' + str(np.mean(eccentricity)))
-# print('Increment: ' + str(np.mean(eccentricity) - ecc_scale))
-# print('Absolute change: ' + str(abs(np.mean(eccentricity) - ecc_scale)))
+plt.xlim([0, 21])
+plt.legend()

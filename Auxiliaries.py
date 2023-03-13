@@ -1,9 +1,12 @@
+import sys
 import numpy as np
 from os import getcwd
 from Logistics import *
 from numpy.fft import rfft, rfftfreq
 from numpy.polynomial.polynomial import polyfit
 # import AstroToolbox as Astro
+
+sys.path.insert(0, '/home/yorch/tudat-bundle/cmake-build-release/tudatpy')
 
 # These imports will go to both this files and all files importing this module
 # Some of these imports will not be used in the present file, but will be in others.
@@ -17,6 +20,11 @@ from tudatpy.kernel.astro.frame_conversion import inertial_to_rsw_rotation_matri
 from tudatpy.kernel.astro.element_conversion import rotation_matrix_to_quaternion_entries as mat2quat
 from tudatpy.kernel.astro.element_conversion import quaternion_entries_to_rotation_matrix as quat2mat
 from tudatpy.kernel.astro.element_conversion import cartesian_to_keplerian, true_to_mean_anomaly, semi_major_axis_to_mean_motion
+from tudatpy.plotting import trajectory_3d
+
+from matplotlib import use
+use('TkAgg')
+import matplotlib.pyplot as plt
 
 
 def quaternion_entries_to_euler_angles(quaternion: np.ndarray[4]) -> np.ndarray[3]:
@@ -99,19 +107,28 @@ def mean_anomaly_history_from_cartesian_history(cartesian_history: dict,
     return mean_anomaly_history
 
 
-def normalize_spherical_harmonic_coefficients(cosine_coefficients: np.ndarray, sine_coefficients: np.ndarray) -> tuple:
+def get_normalization_constant(degree: int, order: int) -> float:
 
-    max_degree, max_order = cosine_coefficients.shape
+    num = (2 - (order == 0))*(2*degree + 1)*np.math.factorial(degree - order)
+    den = np.math.factorial(degree + order)
+    N = np.sqrt( num / den )
 
-    for degree in range(int(max_degree + 1)):
-        for order in range(int(max_order + 1)):
-            if order == 0 : delta = 1
-            else : delta = 0
-            N = np.sqrt((2 - delta)*(2*order+1)*np.math.factorial(order - degree)/np.math.factorial(order + degree))
-            cosine_coefficients[degree, order] = cosine_coefficients[degree, order] / N  # Should this be a times or an over?
-            sine_coefficients[degree, order] = sine_coefficients[degree, order] / N  # Should this be a times or an over?
+    return N
 
-    return cosine_coefficients, sine_coefficients
+
+# def normalize_spherical_harmonic_coefficients(cosine_coefficients: np.ndarray, sine_coefficients: np.ndarray) -> tuple:
+#
+#     max_degree, max_order = cosine_coefficients.shape
+#
+#     for degree in range(int(max_degree + 1)):
+#         for order in range(int(max_order + 1)):
+#             if order == 0 : delta = 1
+#             else : delta = 0
+#             N = np.sqrt((2 - delta)*(2*order+1)*np.math.factorial(order - degree)/np.math.factorial(order + degree))
+#             cosine_coefficients[degree, order] = cosine_coefficients[degree, order] / N  # Should this be a times or an over?
+#             sine_coefficients[degree, order] = sine_coefficients[degree, order] / N  # Should this be a times or an over?
+#
+#     return cosine_coefficients, sine_coefficients
 
 
 def get_martian_system(ephemerides: environment_setup.ephemeris.EphemerisSettings,
@@ -144,7 +161,7 @@ def get_martian_system(ephemerides: environment_setup.ephemeris.EphemerisSetting
     # WE FIRST CREATE MARS.
     bodies_to_create = ["Mars"]
     global_frame_origin = "Mars"
-    global_frame_orientation = "Mars"
+    global_frame_orientation = "J2000"
     body_settings = environment_setup.get_default_body_settings(bodies_to_create, global_frame_origin, global_frame_orientation)
 
     # WE THEN CREATE PHOBOS USING THE INPUTS.
@@ -184,7 +201,7 @@ def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
     · Accelerations: Mars' harmonic coefficients up to degree and order 12. Phobos' quadrupole gravity field (C20 & C22).
     · Propagator: Cartesian states
 
-    :param bodies: The SystemOfBOdies object of the simulation.
+    :param bodies: The SystemOfBodies object of the simulation.
     :param simulation_time: The duration of the simulation.
     :param dependent_variables: The list of dependent variables to save during propagation.
     :return: propagato_settings
@@ -207,8 +224,8 @@ def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
                                                                                       np.inf, np.inf)
     # PROPAGATION SETTINGS
     # Initial conditions
-    initial_epoch = 13035.0  # This is (aproximately) the first perisapsis passage since J2000
-    initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'ECLIPJ2000', 'NONE', initial_epoch)
+    initial_epoch = 13035.0  # This is (approximately) the first perisapsis passage since J2000
+    initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'J2000', 'NONE', initial_epoch)
     # Termination condition
     termination_condition = propagation_setup.propagator.time_termination(simulation_time)
     # The settings object
@@ -233,7 +250,7 @@ def get_model_a2_propagator_settings(bodies: environment.SystemOfBodies,
     bodies_to_propagate = ['Phobos']
 
     # TORQUE SETTINGS
-    torque_settings_on_phobos = dict(Mars=[propagation_setup.torque.spherical_harmonic_gravitational(2, 2)])
+    torque_settings_on_phobos = dict(Mars=[propagation_setup.torque.spherical_harmonic_gravitational(2,2)])
     torque_settings = {'Phobos': torque_settings_on_phobos}
     torque_model = propagation_setup.create_torque_models(bodies, torque_settings, bodies_to_propagate)
 
@@ -258,6 +275,72 @@ def get_model_a2_propagator_settings(bodies: environment.SystemOfBodies,
                                                                   integrator_settings,
                                                                   termination_condition,
                                                                   output_variables = dependent_variables)
+
+    return propagator_settings
+
+
+def get_model_b_propagator_settings(bodies: environment.SystemOfBodies,
+                                    simulation_time: float,
+                                    initial_state: np.ndarray,
+                                    dependent_variables: list[propagation_setup.dependent_variable.PropagationDependentVariables] = [])\
+        -> propagation_setup.propagator.TranslationalStatePropagatorSettings:
+
+    bodies_to_propagate = ['Phobos']
+    central_bodies = ['Mars']
+
+    # ACCELERATION SETTINGS
+    acceleration_settings_on_phobos = dict(
+        Mars=[propagation_setup.acceleration.mutual_spherical_harmonic_gravity(12, 12, 2, 2)])
+    acceleration_settings = {'Phobos': acceleration_settings_on_phobos}
+    acceleration_model = propagation_setup.create_acceleration_models(bodies, acceleration_settings,
+                                                                      bodies_to_propagate, central_bodies)
+
+    # TORQUE SETTINGS
+    torque_settings_on_phobos = dict(Mars=[propagation_setup.torque.spherical_harmonic_gravitational(2, 2)])
+    torque_settings = {'Phobos': torque_settings_on_phobos}
+    torque_model = propagation_setup.create_torque_models(bodies, torque_settings, bodies_to_propagate)
+
+    # INTEGRATOR
+    time_step = 300.0  # These are 300s = 5min
+    coefficients = propagation_setup.integrator.CoefficientSets.rkdp_87
+    integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(time_step,
+                                                                                      coefficients,
+                                                                                      time_step,
+                                                                                      time_step,
+                                                                                      np.inf, np.inf)
+
+    # GENERAL PROPAGATION SETTINGS
+    # Initial conditions
+    initial_epoch = 13035.0  # This is (aproximately) the first perisapsis passage since J2000
+    # Termination condition
+    termination_condition = propagation_setup.propagator.time_termination(simulation_time)
+
+    # TRANSLATIONAL PROPAGATOR
+    initial_translational_state = initial_state[:6]
+    propagator_settings_trans = propagation_setup.propagator.translational(central_bodies,
+                                                                           acceleration_model,
+                                                                           bodies_to_propagate,
+                                                                           initial_translational_state,
+                                                                           initial_epoch,
+                                                                           integrator_settings,
+                                                                           termination_condition)
+
+    # ROTATIONAL PROPAGATOR
+    initial_rotational_state = initial_state[6:]
+    propagator_settings_rot = propagation_setup.propagator.rotational(torque_model,
+                                                                      bodies_to_propagate,
+                                                                      initial_rotational_state,
+                                                                      initial_epoch,
+                                                                      integrator_settings,
+                                                                      termination_condition)
+
+    # MULTI-TYPE PROPAGATOR
+    propagator_list = [propagator_settings_trans, propagator_settings_rot]
+    propagator_settings = propagation_setup.propagator.multitype(propagator_list,
+                                                                 integrator_settings,
+                                                                 initial_epoch,
+                                                                 termination_condition,
+                                                                 output_variables = dependent_variables)
 
     return propagator_settings
 
@@ -327,28 +410,44 @@ def get_gravitational_field(frame_name: str, field_type: str, source: str)\
 def inertia_tensor_from_spherical_harmonic_gravity_field(
         gravity_field: environment.SphericalHarmonicsGravityField) -> np.ndarray:
 
+    '''
+    This function is completely equivalent to the tudat-provided getInertiaTensor function defined in the file
+    tudat.astro.gravitation.sphericalHarmonicsGravityField.cpp, while requiring less inputs.
+    NOTE: Phobos' mean moment
+    of inertia is hard-coded inside this function.
+    '''
+
     try:
         C_20 = gravity_field.cosine_coefficients[2,0]
+        C_21 = gravity_field.cosine_coefficients[2,1]
         C_22 = gravity_field.cosine_coefficients[2,2]
+        S_21 = gravity_field.sine_coefficients[2,1]
+        S_22 = gravity_field.sine_coefficients[2,2]
     except:
         raise ValueError('Insufficient spherical harmonics for the computation of an inertia tensor.')
 
     R = gravity_field.reference_radius
     M = gravity_field.gravitational_parameter / constants.GRAVITATIONAL_CONSTANT
 
-    N_20 = np.sqrt(5)
-    N_22 = np.sqrt(10)
+    N_20 = get_normalization_constant(2, 0)
+    N_21 = get_normalization_constant(2, 1)
+    N_22 = get_normalization_constant(2, 2)
 
     C_20 = C_20 * N_20
+    C_21 = C_21 * N_21
     C_22 = C_22 * N_22
+    S_21 = S_21 * N_21
+    S_22 = S_22 * N_22
 
-    aux = M*R**2
-    I = (2/5)*aux
-    A = aux * (C_20/3 - 2*C_22) + I
-    B = aux * (C_20/3 + 2*C_22) + I
-    C = aux * (-2*C_20/3) + I
+    I = 0.43  # Mean moment of inertia taken from Rambaux 2012 (no other number found anywhere else)
+    I_xx = C_20/3 - 2*C_22 + I
+    I_yy = C_20/3 + 2*C_22 + I
+    I_zz = -(2.0/3.0)*C_20 + I
+    I_xy = -2.0*S_22
+    I_xz = -C_21
+    I_yz = -S_21
 
-    inertia_tensor = np.array([[A, 0, 0], [0, B, 0], [0, 0, C]])
+    inertia_tensor = (M*R**2) * np.array([[I_xx, I_xy, I_xz], [I_xy, I_yy, I_yz], [I_xz, I_yz, I_zz]])
 
     return inertia_tensor
 
@@ -445,6 +544,12 @@ def get_longitudinal_libration_history_from_libration_calculator(translational_h
 
 def get_fourier_elements_from_history(result: dict,
                                       clean_signal: list = [0.0, 0]) -> tuple:
+    '''
+    The output of this function will be the frequencies in rad/unit of input, and the amplitudes.
+    :param result:
+    :param clean_signal:
+    :return:
+    '''
 
     result_array = result2array(result)
     sample_times = result_array[:,0]
@@ -461,7 +566,83 @@ def get_fourier_elements_from_history(result: dict,
 
     n = len(sample_times)
     dt = sample_times[1] - sample_times[0]
-    frequencies = rfftfreq(n, dt)
+    frequencies = TWOPI * rfftfreq(n, dt)
     amplitudes = 2*abs(rfft(signal, norm = 'forward'))
 
     return frequencies, amplitudes
+
+def plot_kepler_elements(keplerian_history: dict, title: str = None) -> None:
+
+    epochs_array = np.array(list(keplerian_history.keys()))
+
+    (fig, ((ax1, ax2), (ax3, ax4), (ax5, ax6))) = plt.subplots(3, 2)
+    # Semi-major axis
+    a = result2array(extract_elements_from_history(keplerian_history, 0))[:, 1]
+    ax1.plot(epochs_array / 86400.0, a / 1000.0)
+    ax1.set_xlabel('Time [days since J2000]')
+    ax1.set_ylabel(r'$a$ [km]')
+    ax1.set_title('Semimajor axis')
+    ax1.grid()
+    # Eccentricity
+    e = result2array(extract_elements_from_history(keplerian_history, 1))[:, 1]
+    ax2.plot(epochs_array / 86400.0, e)
+    ax2.set_xlabel('Time [days since J2000]')
+    ax2.set_ylabel(r'$e$ [-]')
+    ax2.set_title('Eccentricity')
+    ax2.grid()
+    # Inclination
+    i = result2array(extract_elements_from_history(keplerian_history, 2))[:, 1]
+    ax3.plot(epochs_array / 86400.0, i * 360.0 / TWOPI)
+    ax3.set_xlabel('Time [days since J2000]')
+    ax3.set_ylabel(r'$i$ [º]')
+    ax3.set_title('Inclination')
+    ax3.grid()
+    # Righ-ascension of ascending node
+    RAAN = result2array(extract_elements_from_history(keplerian_history, 4))[:, 1]
+    ax4.plot(epochs_array / 86400.0, RAAN * 360.0 / TWOPI)
+    ax4.set_xlabel('Time [days since J2000]')
+    ax4.set_ylabel(r'$\Omega$ [º]')
+    ax4.set_title('RAAN')
+    ax4.grid()
+    # Argument of periapsis
+    omega = result2array(extract_elements_from_history(keplerian_history, 3))[:, 1]
+    ax5.plot(epochs_array / 86400.0, omega * 360.0 / TWOPI)
+    ax5.set_xlabel('Time [days since J2000]')
+    ax5.set_ylabel(r'$\omega$ [º]')
+    ax5.set_title('Argument of periapsis')
+    ax5.grid()
+    # True anomaly
+    theta = result2array(extract_elements_from_history(keplerian_history, 5))[:, 1]
+    ax6.plot(epochs_array / 86400.0, theta * 360.0 / TWOPI)
+    ax6.set_xlabel('Time [days since J2000]')
+    ax6.set_ylabel(r'$\theta$ [º]')
+    ax6.set_title('True anomaly')
+    ax6.grid()
+
+    fig.tight_layout()
+    if title is None: fig.suptitle('Keplerian elements')
+    else: fig.suptitle(title)
+
+    return
+
+
+def bring_history_inside_bounds(original: dict, lower_bound: float,
+                                upper_bound: float, include: str = 'lower') -> np.ndarray:
+
+    original_array = result2array(original)
+    original_array[:,1:] = bring_inside_bounds(original_array[:,1:], lower_bound, upper_bound, include)
+    new = array2result(original_array)
+
+    return new
+
+
+def get_longitudinal_normal_mode_from_inertia_tensor(inertia_tensor: np.ndarray, mean_motion: float) -> float:
+
+    A = inertia_tensor[0,0]
+    B = inertia_tensor[1,1]
+    C = inertia_tensor[2,2]
+    gamma = (B - A) / C
+
+    normal_mode = mean_motion * np.sqrt(3*gamma)
+
+    return normal_mode
