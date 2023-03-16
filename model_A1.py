@@ -46,7 +46,7 @@ scaled_amplitude = np.radians(libration_amplitude) / ecc_scale
 bodies = get_martian_system(phobos_ephemerides, gravity_field_type, gravity_field_source, scaled_amplitude)
 
 # DEFINE PROPAGATION
-simulation_time = 90.0*constants.JULIAN_DAY
+simulation_time = 900.0*constants.JULIAN_DAY
 dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to_body_fixed_313_euler_angles('Phobos'),  # 0, 1, 2
                                 propagation_setup.dependent_variable.central_body_fixed_spherical_position('Mars', 'Phobos'),  # 3, 4, 5
                                 propagation_setup.dependent_variable.keplerian_state('Phobos', 'Mars'),  # 6, 7, 8, 9, 10, 11

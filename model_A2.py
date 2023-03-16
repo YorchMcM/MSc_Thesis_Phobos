@@ -51,6 +51,7 @@ bodies = get_martian_system(phobos_ephemerides, gravity_field_type, gravity_fiel
 # PHOBOS' ROTATIONAL PROPERTIES
 # phobos_mean_rotational_rate = 0.00022785759213999574  # In rad/s
 phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, longitude slope goes down)
+# phobos_mean_rotational_rate = 0.0002280352445  # In rad/s (more of this number, longitude slope goes down)
 phobos_rotational_speed_at_periapsis = phobos_mean_rotational_rate * (1.0 - np.radians(0.0))
 
 # DEFINE PROPAGATION
@@ -70,7 +71,7 @@ simulator_undamped = numerical_simulation.create_dynamics_simulator(bodies, fake
 # OBTAIN DAMPED INITIAL STATE
 #                                    4h, 8h, 16h, 1d 8h, 2d 16h, 5d 8h, 10d 16h, 21d 8h, 42d 16h, 85d 8h
 # dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0])*3600.0)  # In seconds.
-dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0, 64.0, 128.0])*3600.0)  # In seconds.
+dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0])*3600.0)  # In seconds.
 percentages = np.linspace(0.0, 0.1, 201)
 damping_results = numerical_simulation.propagation.get_zero_proper_mode_rotational_state(bodies,
                                                                                          fake_propagator_settings,
