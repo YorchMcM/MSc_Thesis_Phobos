@@ -14,9 +14,11 @@ In this script we will define model A1. It includes:
 # IMPORTS
 from matplotlib import use
 use('TkAgg')
+from matplotlib.gridspec import GridSpec
 from matplotlib import pyplot as plt
 import matplotlib.font_manager as fman
 from Auxiliaries import *
+from time import time
 
 sys.path.insert(0, '/home/yorch/tudat-bundle/cmake-build-release/tudatpy')
 
@@ -31,12 +33,18 @@ plt.rc('font', family = 'Roboto Slab')
 plt.rc('axes', titlesize = 18)
 plt.rc('axes', labelsize = 16)
 plt.rc('legend', fontsize = 14)
+# plt.rc('text', usetex = True)
+plt.rc('text.latex', preamble = r'\usepackage{amssymb, wasysym}')
+
+verbose = True
 
 # LOAD SPICE KERNELS
+if verbose: print('Loading kernels...')
 spice.load_standard_kernels()
 
 # CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
 # The ephemeris model is irrelevant because the translational dynamics of Phobos will be propagated. But tudat complains if Phobos doesn't have one.
+if verbose: print('Creating universe...')
 phobos_ephemerides = environment_setup.ephemeris.direct_spice('Mars', 'J2000')
 gravity_field_type = 'QUAD'
 gravity_field_source = 'Le Maistre'
@@ -46,35 +54,41 @@ scaled_amplitude = np.radians(libration_amplitude) / ecc_scale
 bodies = get_solar_system(phobos_ephemerides, gravity_field_type, gravity_field_source, scaled_amplitude)
 
 # DEFINE PROPAGATION
-simulation_time = 900.0*constants.JULIAN_DAY
+if verbose: print('Setting up propagation...')
+simulation_time = 8300.0*constants.JULIAN_DAY
 mutual_spherical = propagation_setup.acceleration.mutual_spherical_harmonic_gravity_type
 mars_acceleration_dependent_variable = propagation_setup.dependent_variable.single_acceleration_norm(mutual_spherical, 'Phobos', 'Mars')
-dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to_body_fixed_313_euler_angles('Phobos'),  # 0, 1, 2
+# dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to_body_fixed_313_euler_angles('Phobos'),  # 0, 1, 2
                                 propagation_setup.dependent_variable.central_body_fixed_spherical_position('Mars', 'Phobos'),  # 3, 4, 5
                                 propagation_setup.dependent_variable.keplerian_state('Phobos', 'Mars'),  # 6, 7, 8, 9, 10, 11
                                 propagation_setup.dependent_variable.central_body_fixed_spherical_position('Phobos', 'Mars'),  # 12, 13, 14
-                                acceleration_norm_from_body_on_phobos('Sun'), # 15
-                                acceleration_norm_from_body_on_phobos('Earth'),  # 16
-                                # acceleration_norm_from_body_on_phobos('Moon'),  # 17
-                                mars_acceleration_dependent_variable,  # 18
-                                acceleration_norm_from_body_on_phobos('Deimos'),  # 19
-                                acceleration_norm_from_body_on_phobos('Jupiter'),  # 20
+                                # acceleration_norm_from_body_on_phobos('Sun'), # 15
+                                # acceleration_norm_from_body_on_phobos('Earth'),  # 16
+                                # # acceleration_norm_from_body_on_phobos('Moon'),  # 17
+                                # mars_acceleration_dependent_variable,  # 18
+                                # acceleration_norm_from_body_on_phobos('Deimos'),  # 19
+                                # acceleration_norm_from_body_on_phobos('Jupiter'),  # 20
                                 # acceleration_norm_from_body_on_phobos('Saturn')  # 25
                                 ]
-propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time,
-                                                       dependent_variables_to_save)
+propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time, dependent_variables_to_save)
 
 # SIMULATE DYNAMICS
+tic = time()
+if verbose: print('Simulating dynamics...')
 simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
-save2txt(simulator.state_history, 'phobos-ephemeris.txt')  # Baseline means Mars, Sun, Earth, Deimos and Jupiter
-
-print('SIMULATIONS FINISHED.')
+save2txt(simulator.state_history, 'phobos-ephemerides-8300.txt')
+save2txt(simulator.dependent_variable_history, 'a1-dependent-variables-8300.txt')
+tac = time()
+print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
 
 # POST PROCESS (CHECKS)
 checks = [0, 0, 0, 0, 0]
 mars_mu = bodies.get('Mars').gravitational_parameter
 dependents = simulator.dependent_variable_history
 epochs_array = np.array(list(simulator.state_history.keys()))
+keplerian_history = extract_elements_from_history(simulator.dependent_variable_history, list(range(6,12)))
+average_mean_motion, orbits = average_mean_motion_over_integer_number_of_orbits(keplerian_history, mars_mu)
+print('Average mean motion over', orbits, 'orbits:', average_mean_motion, 'rad/s =', average_mean_motion*86400.0, 'rad/day')
 
 # Trajectory
 if checks[0]:
@@ -82,7 +96,6 @@ if checks[0]:
 
 # Orbit does not blow up.
 if checks[1]:
-    keplerian_history = extract_elements_from_history(simulator.dependent_variable_history, list(range(6,12)))
     plot_kepler_elements(keplerian_history)
 
 # Orbit is equatorial
@@ -132,13 +145,13 @@ if checks[3]:
     plt.ylabel('Coordinate [º]')
 
     plt.figure()
-    plt.semilogy(libration_freq * 86400.0, libration_amp * 360 / TWOPI)
+    plt.loglog(libration_freq * 86400.0, libration_amp * 360 / TWOPI, marker = '.')
     plt.axline((phobos_mean_rotational_rate * 86400.0, 0),(phobos_mean_rotational_rate * 86400.0, 1), ls = 'dashed', c = 'r', label = 'Phobian mean motion')
     plt.title(r'Libration frequency content')
     plt.xlabel(r'$\omega$ [rad/day]')
     plt.ylabel(r'$A [º]$')
     plt.grid()
-    plt.xlim([0, 21])
+    # plt.xlim([0, 21])
     plt.legend()
 
 # Accelerations exerted by all third bodies. This will be used to assess whether the bodies are needed or not.
@@ -153,3 +166,11 @@ if checks[4]:
     plt.ylabel(r'Acceleration [m/s²]')
     plt.legend()
     plt.grid()
+
+
+'''    
+This propagation gives an average mean motion of 2.278563609852602e-4 rad/s = 19.68678958912648 rad/day. The associated
+orbital period is of 7h 39min 35.20s. (This solution is "accurate" up to the 8th significant digit.)
+The tweaked rotational motion in model A2 is of 2.28035245e-4 rad/s = 19.702245168 rad/day. The associated rotational
+period is of 7h 39min 13.57s.
+'''

@@ -116,21 +116,6 @@ def get_normalization_constant(degree: int, order: int) -> float:
     return N
 
 
-# def normalize_spherical_harmonic_coefficients(cosine_coefficients: np.ndarray, sine_coefficients: np.ndarray) -> tuple:
-#
-#     max_degree, max_order = cosine_coefficients.shape
-#
-#     for degree in range(int(max_degree + 1)):
-#         for order in range(int(max_order + 1)):
-#             if order == 0 : delta = 1
-#             else : delta = 0
-#             N = np.sqrt((2 - delta)*(2*order+1)*np.math.factorial(order - degree)/np.math.factorial(order + degree))
-#             cosine_coefficients[degree, order] = cosine_coefficients[degree, order] / N  # Should this be a times or an over?
-#             sine_coefficients[degree, order] = sine_coefficients[degree, order] / N  # Should this be a times or an over?
-#
-#     return cosine_coefficients, sine_coefficients
-
-
 def get_solar_system(ephemerides: environment_setup.ephemeris.EphemerisSettings,
                      field_type: str,
                      field_source: str,
@@ -526,23 +511,6 @@ def quaternion_to_matrix_history(quaternion_history: dict) -> dict:
     return rotation_matrix_history
 
 
-# def get_libration_history(translational_history: dict,
-#                           rotational_history: dict,
-#                           gravitational_parameter: float) -> dict:
-#
-#     epochs_array = np.array(list(translational_history.keys()))
-#     mean_anomaly_history = result2array(mean_anomaly_history_from_cartesian_history(translational_history,
-#                                                                                     gravitational_parameter))
-#     quaternion_history = extract_element_from_history(rotational_history, [0, 1, 2, 3])
-#     euler_history = result2array(quaternion_to_euler_history(quaternion_history))[:,:4]
-#
-#     libration_history = np.zeros([len(epochs_array), 2])
-#     libration_history[:,0] = epochs_array
-#     libration_history[:,1] = make_between_zero_and_twopi(euler_history[:,1] + euler_history[:,3] - mean_anomaly_history[:,1] - PI)
-#
-#     return array2result(libration_history), array2result(euler_history)
-
-
 def get_libration_history(translational_history: dict,
                           rotational_history: dict) -> dict:
 
@@ -676,6 +644,8 @@ def bring_history_inside_bounds(original: dict, lower_bound: float,
 
 def get_longitudinal_normal_mode_from_inertia_tensor(inertia_tensor: np.ndarray, mean_motion: float) -> float:
 
+    # From Rambaux (2012) "Rotational motion of Phobos".
+
     A = inertia_tensor[0,0]
     B = inertia_tensor[1,1]
     C = inertia_tensor[2,2]
@@ -702,3 +672,29 @@ def torque_norm_from_body_on_phobos(body_exerting_torque: str) \
     ret = propagation_setup.dependent_variable.single_torque_norm(point_mass, 'Phobos', body_exerting_torque)
 
     return ret
+
+
+def get_periapses(keplerian_history: dict) -> list:
+
+    epochs_list = list(keplerian_history.keys())
+    peri = [[None]*2]*len(epochs_list)
+
+    true_anomaly = result2array(extract_elements_from_history(keplerian_history, [-1]))
+    true_anomaly[:,1] = remove_jumps(true_anomaly[:,1], TWOPI)
+
+    for idx in range(len(epochs_list[:-1])):
+        if true_anomaly[idx,1] // TWOPI != true_anomaly[idx+1,1] // TWOPI:
+            peri[idx] = [idx, true_anomaly[idx+1,0]]
+
+    return [periapsis for periapsis in peri if periapsis != [None, None]]
+
+def average_mean_motion_over_integer_number_of_orbits(keplerian_history: dict, gravitational_parameter: float) -> float:
+
+    mean_motion_history = mean_motion_history_from_keplerian_history(keplerian_history, gravitational_parameter)
+    periapses = get_periapses(keplerian_history)
+    first_periapsis = periapses[0][0]
+    last_periapsis = periapses[-1][0]
+    mean_motion_over_integer_number_of_orbits = np.array(list(mean_motion_history.values())[first_periapsis:last_periapsis])
+
+    return np.mean(mean_motion_over_integer_number_of_orbits), len(periapses)
+
