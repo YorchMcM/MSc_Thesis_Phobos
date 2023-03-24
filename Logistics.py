@@ -11,6 +11,16 @@ def norm_columns(array: np.ndarray) -> np.ndarray:
     return np.array([np.linalg.norm(array[:,k]) for k in range(array.shape[1])])
 
 
+def norm_history(history: dict) -> dict:
+
+    epoch_list = list(history.keys())
+    normed_history = dict.fromkeys(epoch_list)
+    for epoch in epoch_list:
+        normed_history[epoch] = np.linalg.norm(history[epoch])
+
+    return normed_history
+
+
 def unit(x: np.ndarray) -> np.ndarray:
     return x / np.linalg.norm(x)
 
@@ -144,6 +154,7 @@ def extract_elements_from_history(history: dict, index) -> dict:
     if type(index) is int: index = [index]
     elif type(index) is list: pass
     else: raise TypeError('(extract_element_from_history): Illegal index type.')
+
 
     n = len(index)
     new_history = dict.fromkeys(list(history.keys()))

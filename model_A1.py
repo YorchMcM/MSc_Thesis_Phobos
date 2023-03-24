@@ -43,83 +43,113 @@ gravity_field_source = 'Le Maistre'
 libration_amplitude = 1.1  # In degrees
 ecc_scale = 0.015034167790105173
 scaled_amplitude = np.radians(libration_amplitude) / ecc_scale
-bodies = get_martian_system(phobos_ephemerides, gravity_field_type, gravity_field_source, scaled_amplitude)
+bodies = get_solar_system(phobos_ephemerides, gravity_field_type, gravity_field_source, scaled_amplitude)
 
 # DEFINE PROPAGATION
 simulation_time = 900.0*constants.JULIAN_DAY
+mutual_spherical = propagation_setup.acceleration.mutual_spherical_harmonic_gravity_type
+mars_acceleration_dependent_variable = propagation_setup.dependent_variable.single_acceleration_norm(mutual_spherical, 'Phobos', 'Mars')
 dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to_body_fixed_313_euler_angles('Phobos'),  # 0, 1, 2
                                 propagation_setup.dependent_variable.central_body_fixed_spherical_position('Mars', 'Phobos'),  # 3, 4, 5
                                 propagation_setup.dependent_variable.keplerian_state('Phobos', 'Mars'),  # 6, 7, 8, 9, 10, 11
-                                propagation_setup.dependent_variable.central_body_fixed_spherical_position('Phobos', 'Mars') ]  # 12, 13, 14
+                                propagation_setup.dependent_variable.central_body_fixed_spherical_position('Phobos', 'Mars'),  # 12, 13, 14
+                                acceleration_norm_from_body_on_phobos('Sun'), # 15
+                                acceleration_norm_from_body_on_phobos('Earth'),  # 16
+                                # acceleration_norm_from_body_on_phobos('Moon'),  # 17
+                                mars_acceleration_dependent_variable,  # 18
+                                acceleration_norm_from_body_on_phobos('Deimos'),  # 19
+                                acceleration_norm_from_body_on_phobos('Jupiter'),  # 20
+                                # acceleration_norm_from_body_on_phobos('Saturn')  # 25
+                                ]
 propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time,
                                                        dependent_variables_to_save)
 
 # SIMULATE DYNAMICS
 simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
-save2txt(simulator.state_history, 'Pruebilla.txt')
+save2txt(simulator.state_history, 'phobos-ephemeris.txt')  # Baseline means Mars, Sun, Earth, Deimos and Jupiter
+
+print('SIMULATIONS FINISHED.')
 
 # POST PROCESS (CHECKS)
+checks = [0, 0, 0, 0, 0]
 mars_mu = bodies.get('Mars').gravitational_parameter
 dependents = simulator.dependent_variable_history
 epochs_array = np.array(list(simulator.state_history.keys()))
 
 # Trajectory
-trajectory_3d(simulator.state_history, ['Phobos'], 'Mars')
+if checks[0]:
+    trajectory_3d(simulator.state_history, ['Phobos'], 'Mars')
 
 # Orbit does not blow up.
-keplerian_history = extract_elements_from_history(simulator.dependent_variable_history, [6, 7, 8, 9, 10, 11])
-plot_kepler_elements(keplerian_history)
+if checks[1]:
+    keplerian_history = extract_elements_from_history(simulator.dependent_variable_history, list(range(6,12)))
+    plot_kepler_elements(keplerian_history)
 
 # Orbit is equatorial
-sub_phobian_point = result2array(extract_elements_from_history(simulator.dependent_variable_history, [13, 14]))
-sub_phobian_point[:,1:] = bring_inside_bounds(sub_phobian_point[:,1:], -PI, PI, include = 'upper')
+if checks[2]:
+    sub_phobian_point = result2array(extract_elements_from_history(simulator.dependent_variable_history, [13, 14]))
+    sub_phobian_point[:,1:] = bring_inside_bounds(sub_phobian_point[:,1:], -PI, PI, include = 'upper')
 
-plt.figure()
-plt.scatter(sub_phobian_point[:,2] * 360.0 / TWOPI, sub_phobian_point[:,1] * 360.0 / TWOPI)
-plt.grid()
-plt.title('Sub-phobian point')
-plt.xlabel('LON [º]')
-plt.ylabel('LAT [º]')
+    plt.figure()
+    plt.scatter(sub_phobian_point[:,2] * 360.0 / TWOPI, sub_phobian_point[:,1] * 360.0 / TWOPI)
+    plt.grid()
+    plt.title('Sub-phobian point')
+    plt.xlabel('LON [º]')
+    plt.ylabel('LAT [º]')
 
-plt.figure()
-plt.plot(epochs_array / 86400.0, sub_phobian_point[:,1] * 360.0 / TWOPI, label = r'$Lat$')
-plt.plot(epochs_array / 86400.0, sub_phobian_point[:,2] * 360.0 / TWOPI, label = r'$Lon$')
-plt.legend()
-plt.grid()
-plt.title('Sub-phobian point')
-plt.xlabel('Time [days since J2000]')
-plt.ylabel('Coordinate [º]')
+    plt.figure()
+    plt.plot(epochs_array / 86400.0, sub_phobian_point[:,1] * 360.0 / TWOPI, label = r'$Lat$')
+    plt.plot(epochs_array / 86400.0, sub_phobian_point[:,2] * 360.0 / TWOPI, label = r'$Lon$')
+    plt.legend()
+    plt.grid()
+    plt.title('Sub-phobian point')
+    plt.xlabel('Time [days since J2000]')
+    plt.ylabel('Coordinate [º]')
 
 # Phobos' x axis points towards Mars with a once-per-orbit longitudinal libration with amplitude as specified above.
-sub_martian_point = result2array(extract_elements_from_history(simulator.dependent_variable_history, [4, 5]))
-sub_martian_point[:,1:] = bring_inside_bounds(sub_martian_point[:,1:], -PI, PI, include = 'upper')
-libration_history = extract_elements_from_history(simulator.dependent_variable_history, 5)
-libration_freq, libration_amp = get_fourier_elements_from_history(libration_history)
-# phobos_mean_rotational_rate = 0.00022785759213999574  # In rad/s
-phobos_mean_rotational_rate = 0.000227995  # In rad/s
+if checks[3]:
+    sub_martian_point = result2array(extract_elements_from_history(simulator.dependent_variable_history, [4, 5]))
+    sub_martian_point[:,1:] = bring_inside_bounds(sub_martian_point[:,1:], -PI, PI, include = 'upper')
+    libration_history = extract_elements_from_history(simulator.dependent_variable_history, 5)
+    libration_freq, libration_amp = get_fourier_elements_from_history(libration_history)
+    # phobos_mean_rotational_rate = 0.00022785759213999574  # In rad/s
+    phobos_mean_rotational_rate = 0.000227995  # In rad/s
 
-plt.figure()
-plt.scatter(sub_martian_point[:,2] * 360.0 / TWOPI, sub_martian_point[:,1] * 360.0 / TWOPI)
-plt.grid()
-plt.title('Sub-martian point')
-plt.xlabel('LON [º]')
-plt.ylabel('LAT [º]')
+    plt.figure()
+    plt.scatter(sub_martian_point[:,2] * 360.0 / TWOPI, sub_martian_point[:,1] * 360.0 / TWOPI)
+    plt.grid()
+    plt.title('Sub-martian point')
+    plt.xlabel('LON [º]')
+    plt.ylabel('LAT [º]')
 
-plt.figure()
-plt.plot(epochs_array / 86400.0, sub_martian_point[:,1] * 360.0 / TWOPI, label = r'$Lat$')
-plt.plot(epochs_array / 86400.0, sub_martian_point[:,2] * 360.0 / TWOPI, label = r'$Lon$')
-plt.legend()
-plt.grid()
-plt.title('Sub-martian point')
-plt.xlabel('Time [days since J2000]')
-plt.ylabel('Coordinate [º]')
+    plt.figure()
+    plt.plot(epochs_array / 86400.0, sub_martian_point[:,1] * 360.0 / TWOPI, label = r'$Lat$')
+    plt.plot(epochs_array / 86400.0, sub_martian_point[:,2] * 360.0 / TWOPI, label = r'$Lon$')
+    plt.legend()
+    plt.grid()
+    plt.title('Sub-martian point')
+    plt.xlabel('Time [days since J2000]')
+    plt.ylabel('Coordinate [º]')
 
-plt.figure()
-plt.plot(libration_freq * 86400.0, libration_amp * 360 / TWOPI)
-plt.axline((phobos_mean_rotational_rate * 86400.0, 0),(phobos_mean_rotational_rate * 86400.0, 1), ls = 'dashed', c = 'r', label = 'Phobian mean motion')
-plt.title(r'Libration frequency content')
-plt.xlabel(r'$\omega$ [rad/day]')
-plt.ylabel(r'$A [º]$')
-plt.grid()
-plt.xlim([0, 21])
-plt.legend()
+    plt.figure()
+    plt.semilogy(libration_freq * 86400.0, libration_amp * 360 / TWOPI)
+    plt.axline((phobos_mean_rotational_rate * 86400.0, 0),(phobos_mean_rotational_rate * 86400.0, 1), ls = 'dashed', c = 'r', label = 'Phobian mean motion')
+    plt.title(r'Libration frequency content')
+    plt.xlabel(r'$\omega$ [rad/day]')
+    plt.ylabel(r'$A [º]$')
+    plt.grid()
+    plt.xlim([0, 21])
+    plt.legend()
+
+# Accelerations exerted by all third bodies. This will be used to assess whether the bodies are needed or not.
+if checks[4]:
+    third_body_accelerations = result2array(extract_elements_from_history(dependents, list(range(15,20))))
+    third_bodies = ['Sun', 'Earth', 'Moon', 'Mars', 'Deimos', 'Jupiter', 'Saturn']
+    plt.figure()
+    for idx, body in enumerate(third_bodies):
+        plt.semilogy(epochs_array / 86400.0, third_body_accelerations[:,idx+1], label = body)
+    plt.title('Third body accelerations')
+    plt.xlabel('Time [days since J2000]')
+    plt.ylabel(r'Acceleration [m/s²]')
+    plt.legend()
+    plt.grid()

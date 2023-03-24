@@ -131,10 +131,10 @@ def get_normalization_constant(degree: int, order: int) -> float:
 #     return cosine_coefficients, sine_coefficients
 
 
-def get_martian_system(ephemerides: environment_setup.ephemeris.EphemerisSettings,
-                       field_type: str,
-                       field_source: str,
-                       scaled_amplitude: float = 0.0) -> environment.SystemOfBodies:
+def get_solar_system(ephemerides: environment_setup.ephemeris.EphemerisSettings,
+                     field_type: str,
+                     field_source: str,
+                     scaled_amplitude: float = 0.0) -> environment.SystemOfBodies:
 
     '''
     This function will create the "bodies" object, just so we don't have all this lines in all models. Phobos is to be
@@ -159,7 +159,7 @@ def get_martian_system(ephemerides: environment_setup.ephemeris.EphemerisSetting
     '''
 
     # WE FIRST CREATE MARS.
-    bodies_to_create = ["Mars"]
+    bodies_to_create = ["Sun", "Earth", "Moon", "Mars", "Deimos", "Jupiter", "Saturn"]
     global_frame_origin = "Mars"
     global_frame_orientation = "J2000"
     body_settings = environment_setup.get_default_body_settings(bodies_to_create, global_frame_origin, global_frame_orientation)
@@ -198,20 +198,31 @@ def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
 
     · Initial epoch: J2000 (01/01/2000 at 12:00)
     · Integrator: fixed-step RKDP7(8) with a time step of 5 minutes
-    · Accelerations: Mars' harmonic coefficients up to degree and order 12. Phobos' quadrupole gravity field (C20 & C22).
+    · Accelerations:
+        - Mars' harmonic coefficients up to degree and order 12.
+        - Phobos' quadrupole gravity field (C20 & C22).
+        - Third-body point-mass forces by the Sun, Earth, Moon, Deimos, Jupiter and Saturn (Moon and Saturn we'll see)
     · Propagator: Cartesian states
 
     :param bodies: The SystemOfBodies object of the simulation.
     :param simulation_time: The duration of the simulation.
     :param dependent_variables: The list of dependent variables to save during propagation.
-    :return: propagato_settings
+    :return: propagator_settings
     '''
 
     bodies_to_propagate = ['Phobos']
     central_bodies = ['Mars']
 
     # ACCELERATION SETTINGS
-    acceleration_settings_on_phobos = dict(Mars=[propagation_setup.acceleration.mutual_spherical_harmonic_gravity(12, 12, 2, 2)])
+    third_body_force = propagation_setup.acceleration.point_mass_gravity()
+    acceleration_settings_on_phobos = dict(Mars=[propagation_setup.acceleration.mutual_spherical_harmonic_gravity(12, 12, 2, 2)],
+                                           Sun=[third_body_force],
+                                           Earth=[third_body_force],
+                                           # Moon=[third_body_force],
+                                           Deimos=[third_body_force],
+                                           Jupiter=[third_body_force],
+                                           # Saturn=[third_body_force]
+                                           )
     acceleration_settings = {'Phobos': acceleration_settings_on_phobos}
     acceleration_model = propagation_setup.create_acceleration_models(bodies, acceleration_settings, bodies_to_propagate, central_bodies)
     # INTEGRATOR
@@ -224,7 +235,7 @@ def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
                                                                                       np.inf, np.inf)
     # PROPAGATION SETTINGS
     # Initial conditions
-    initial_epoch = 13035.0  # This is (approximately) the first perisapsis passage since J2000
+    initial_epoch = 0.0
     initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'J2000', 'NONE', initial_epoch)
     # Termination condition
     termination_condition = propagation_setup.propagator.time_termination(simulation_time)
@@ -247,10 +258,37 @@ def get_model_a2_propagator_settings(bodies: environment.SystemOfBodies,
                                      dependent_variables: list[propagation_setup.dependent_variable.PropagationDependentVariables] = [])\
         -> propagation_setup.propagator.TranslationalStatePropagatorSettings:
 
+    '''
+    This function will create the propagator settings for model A1. The simulation time is given as an input. The bodies,
+    with their environment properties (ephemeris model/rotation model/gravity field/...) is also give as input. This
+    function defines the following about the accelerations and integration:
+
+    · Initial epoch: 01/01/2000 at 15:37:15 (first periapsis passage)
+    · Integrator: fixed-step RKDP7(8) with a time step of 5 minutes
+    · Torques:
+        - Mars' center of mass on Phobos' quadrupole field.
+        - Center-of-mass-on-quadrople-field torques of the following bodies:
+            Sun, Earth, Moon, Deimos, Jupiter and Saturn (Moon and Saturn we'll see)
+    · Propagator: Cartesian states
+
+    :param bodies: The SystemOfBodies object of the simulation.
+    :param simulation_time: The duration of the simulation.
+    :param dependent_variables: The list of dependent variables to save during propagation.
+    :return: propagator_settings
+    '''
+
     bodies_to_propagate = ['Phobos']
 
     # TORQUE SETTINGS
-    torque_settings_on_phobos = dict(Mars=[propagation_setup.torque.spherical_harmonic_gravitational(2,2)])
+    torque_on_phobos = propagation_setup.torque.spherical_harmonic_gravitational(2,2)
+    torque_settings_on_phobos = dict(Mars=[torque_on_phobos],
+                                     Sun=[torque_on_phobos],
+                                     Earth=[torque_on_phobos],
+                                     # Moon=[torque_on_phobos],
+                                     Deimos=[torque_on_phobos],
+                                     Jupiter=[torque_on_phobos]
+                                     # Saturn=[torque_on_phobos]
+                                     )
     torque_settings = {'Phobos': torque_settings_on_phobos}
     torque_model = propagation_setup.create_torque_models(bodies, torque_settings, bodies_to_propagate)
 
@@ -264,7 +302,7 @@ def get_model_a2_propagator_settings(bodies: environment.SystemOfBodies,
                                                                                       np.inf, np.inf)
     # PROPAGATION SETTINGS
     # Initial conditions
-    initial_epoch = 13035.0  # This is (aproximately) the first perisapsis passage since J2000
+    initial_epoch = 13035.0  # This is (approximately) the first perisapsis passage since J2000
     # Termination condition
     termination_condition = propagation_setup.propagator.time_termination(simulation_time)
     # The settings object
@@ -646,3 +684,21 @@ def get_longitudinal_normal_mode_from_inertia_tensor(inertia_tensor: np.ndarray,
     normal_mode = mean_motion * np.sqrt(3*gamma)
 
     return normal_mode
+
+
+def acceleration_norm_from_body_on_phobos(body_exerting_acceleration: str)\
+        -> propagation_setup.dependent_variable.SingleDependentVariableSaveSettings:
+
+    point_mass = propagation_setup.acceleration.point_mass_gravity_type
+    ret = propagation_setup.dependent_variable.single_acceleration_norm(point_mass, 'Phobos', body_exerting_acceleration)
+
+    return ret
+
+
+def torque_norm_from_body_on_phobos(body_exerting_torque: str) \
+        -> propagation_setup.dependent_variable.SingleDependentVariableSaveSettings:
+
+    point_mass = propagation_setup.torque.spherical_harmonic_gravitational_type
+    ret = propagation_setup.dependent_variable.single_torque_norm(point_mass, 'Phobos', body_exerting_torque)
+
+    return ret

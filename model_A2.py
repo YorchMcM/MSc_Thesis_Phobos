@@ -2,7 +2,7 @@
 In this script we will define model A2. It includes:
 
 · Translational model: the states output by model A1
-· Initial epoch: J2000 (01/01/2000 at 12:00)
+· Initial epoch: 01/01/2000 at 15:37:15 (first periapsis passage)
 · Initial state: damped initial state provided by Tudat.
 · Simulation time: 90 days
 · Integrator: fixed-step RKDP7(8) with a time step of 5 minutes
@@ -17,17 +17,10 @@ from matplotlib import use
 use('TkAgg')
 from matplotlib import pyplot as plt
 import matplotlib.font_manager as fman
-# from time import time
-# from os import getcwd
 from Auxiliaries import *
 
 from tudatpy.kernel.interface import spice
-# from tudatpy.kernel import numerical_simulation
-# from tudatpy.kernel.numerical_simulation import environment_setup, propagation_setup, estimation_setup
 from tudatpy.kernel import constants
-# from tudatpy.util import result2array
-# from tudatpy.io import save2txt
-# from tudatpy.plotting import trajectory_3d
 
 # The following lines set the defaults for plot fonts and font sizes.
 for font in fman.findSystemFonts(r'/home/yorch/thesis/Roboto_Slab'):
@@ -41,19 +34,16 @@ plt.rc('legend', fontsize = 14)
 # LOAD SPICE KERNELS
 spice.load_standard_kernels()
 
+print('Creating Solar System...')
 # CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
-imposed_trajectory = read_vector_history_from_file('Pruebilla.txt')
+trajectory_file = './everything-works-results/model-a1/perturbed-baseline.txt'
+imposed_trajectory = read_vector_history_from_file(trajectory_file)
 phobos_ephemerides = environment_setup.ephemeris.tabulated(imposed_trajectory, 'Mars', 'J2000')
 gravity_field_type = 'QUAD'
 gravity_field_source = 'Le Maistre'
-bodies = get_martian_system(phobos_ephemerides, gravity_field_type, gravity_field_source)
+bodies = get_solar_system(phobos_ephemerides, gravity_field_type, gravity_field_source)
 
-# PHOBOS' ROTATIONAL PROPERTIES
-# phobos_mean_rotational_rate = 0.00022785759213999574  # In rad/s
-phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, longitude slope goes down)
-# phobos_mean_rotational_rate = 0.0002280352445  # In rad/s (more of this number, longitude slope goes down)
-phobos_rotational_speed_at_periapsis = phobos_mean_rotational_rate * (1.0 - np.radians(0.0))
-
+print('Defining propagation...')
 # DEFINE PROPAGATION
 initial_epoch = 13035.0  # This is (approximately) the first periapsis passage since J2000
 simulation_time = 90.0 * constants.JULIAN_DAY
@@ -61,31 +51,42 @@ dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to
                                 propagation_setup.dependent_variable.central_body_fixed_spherical_position('Mars', 'Phobos'),  # 3, 4, 5
                                 propagation_setup.dependent_variable.keplerian_state('Phobos', 'Mars'),  # 6, 7, 8, 9, 10, 11
                                 propagation_setup.dependent_variable.central_body_fixed_spherical_position('Phobos', 'Mars'),  # 12, 13, 14
-                                propagation_setup.dependent_variable.relative_position('Phobos', 'Mars')]  # 15, 16, 17
+                                propagation_setup.dependent_variable.relative_position('Phobos', 'Mars'),  # 15, 16, 17
+                                torque_norm_from_body_on_phobos('Sun'),  # 18
+                                torque_norm_from_body_on_phobos('Earth'),  # 19
+                                # torque_norm_from_body_on_phobos('Moon'),  # 20
+                                torque_norm_from_body_on_phobos('Mars'),  # 21
+                                torque_norm_from_body_on_phobos('Deimos'),  # 22
+                                torque_norm_from_body_on_phobos('Jupiter')  # 23
+                                # torque_norm_from_body_on_phobos('Saturn')  # 24
+                                ]
 
+print('Simulating undamped dynamics...')
 # SIMULATE UNDAMPED DYNAMICS FOR REFERENCE
-fake_initial_state = get_fake_initial_state(bodies, initial_epoch, phobos_rotational_speed_at_periapsis)
+phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, longitude slope goes down)
+fake_initial_state = get_fake_initial_state(bodies, initial_epoch, phobos_mean_rotational_rate)
 fake_propagator_settings = get_model_a2_propagator_settings(bodies, simulation_time, fake_initial_state, dependent_variables_to_save)
 simulator_undamped = numerical_simulation.create_dynamics_simulator(bodies, fake_propagator_settings)
 
+print('Obtaining damped initial state...')
 # OBTAIN DAMPED INITIAL STATE
-#                                    4h, 8h, 16h, 1d 8h, 2d 16h, 5d 8h, 10d 16h, 21d 8h, 42d 16h, 85d 8h
-# dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0])*3600.0)  # In seconds.
+#                                  4h, 8h, 16h, 1d 8h, 2d 16h, 5d 8h, 10d 16h, 21d 8h, 42d 16h, 85d 8h  // Up to 853d 8h in get_zero_proper_mode function
 dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0])*3600.0)  # In seconds.
-percentages = np.linspace(0.0, 0.1, 201)
 damping_results = numerical_simulation.propagation.get_zero_proper_mode_rotational_state(bodies,
                                                                                          fake_propagator_settings,
                                                                                          phobos_mean_rotational_rate,
                                                                                          dissipation_times)
 damped_initial_state = damping_results.initial_state
 
+print('Simulating damped dynamics...')
 # SIMULATE DAMPED DYNAMICS
 propagator_settings = get_model_a2_propagator_settings(bodies, simulation_time, damped_initial_state, dependent_variables_to_save)
 simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
 
+print('ALL SIMULATIONS FINISHED')
 
 # POST PROCESS (CHECKS)
-checks = [0, 0, 0, 1, 1]
+checks = [0, 0, 0, 0, 0, 1]
 mars_mu = bodies.get('Mars').gravitational_parameter
 epochs_array = np.array(list(simulator.state_history.keys()))
 
@@ -248,7 +249,7 @@ if checks[4]:
     plt.ylabel('Coordinate [º]')
 
     plt.figure()
-    plt.plot(libration_freq_undamped * 86400.0, libration_amp_undamped * 360 / TWOPI)
+    plt.semilogy(libration_freq_undamped * 86400.0, libration_amp_undamped * 360 / TWOPI)
     plt.axline((phobos_mean_rotational_rate * 86400.0, 0),(phobos_mean_rotational_rate * 86400.0, 1), ls = 'dashed', c = 'r', label = 'Phobian mean motion')
     plt.axline((normal_mode * 86400.0, 0),(normal_mode * 86400.0, 1), ls = 'dashed', c = 'k', label = 'Longitudinal normal mode')
     plt.title(r'Undamped libration frequency content')
@@ -259,7 +260,7 @@ if checks[4]:
     plt.legend()
 
     plt.figure()
-    plt.plot(libration_freq * 86400.0, libration_amp * 360 / TWOPI)
+    plt.semilogy(libration_freq * 86400.0, libration_amp * 360 / TWOPI)
     plt.axline((phobos_mean_rotational_rate * 86400.0, 0),(phobos_mean_rotational_rate * 86400.0, 1), ls = 'dashed', c = 'r', label = 'Phobian mean motion')
     plt.axline((normal_mode * 86400.0, 0),(normal_mode * 86400.0, 1), ls = 'dashed', c = 'k', label = 'Longitudinal normal mode')
     plt.title(r'Damped libration frequency content')
@@ -268,3 +269,28 @@ if checks[4]:
     plt.grid()
     plt.xlim([0, 21])
     plt.legend()
+
+if checks[5]:
+
+    # third_bodies = ['Sun', 'Earth', 'Moon', 'Mars', 'Deimos', 'Jupiter', 'Saturn']
+    third_bodies = ['Sun', 'Earth', 'Mars', 'Deimos', 'Jupiter']
+
+    third_body_torques_undamped = result2array(extract_elements_from_history(simulator_undamped.dependent_variable_history, list(range(18,23))))
+    plt.figure()
+    for idx, body in enumerate(third_bodies):
+        plt.semilogy(epochs_array / 86400.0, third_body_torques_undamped[:,idx+1], label = body)
+    plt.title('Third body torques (undamped rotation)')
+    plt.xlabel('Time [days since J2000]')
+    plt.ylabel(r'Torque [N$\cdot$m]')
+    plt.legend()
+    plt.grid()
+
+    third_body_torques = result2array(extract_elements_from_history(simulator.dependent_variable_history, list(range(18,23))))
+    plt.figure()
+    for idx, body in enumerate(third_bodies):
+        plt.semilogy(epochs_array / 86400.0, third_body_torques[:,idx+1], label = body)
+    plt.title('Third body torques')
+    plt.xlabel('Time [days since J2000]')
+    plt.ylabel(r'Torque [N$\cdot$m]')
+    plt.legend()
+    plt.grid()
