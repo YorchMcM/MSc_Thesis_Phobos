@@ -4,7 +4,6 @@ from os import getcwd
 from Logistics import *
 from numpy.fft import rfft, rfftfreq
 from numpy.polynomial.polynomial import polyfit
-# import AstroToolbox as Astro
 
 sys.path.insert(0, '/home/yorch/tudat-bundle/cmake-build-release/tudatpy')
 
@@ -223,7 +222,7 @@ def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
     initial_epoch = 0.0
     initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'J2000', 'NONE', initial_epoch)
     # Termination condition
-    termination_condition = propagation_setup.propagator.time_termination(simulation_time)
+    termination_condition = propagation_setup.propagator.time_termination(initial_epoch + simulation_time, True)
     # The settings object
     propagator_settings = propagation_setup.propagator.translational(central_bodies,
                                                                      acceleration_model,
@@ -289,7 +288,7 @@ def get_model_a2_propagator_settings(bodies: environment.SystemOfBodies,
     # Initial conditions
     initial_epoch = 13035.0  # This is (approximately) the first perisapsis passage since J2000
     # Termination condition
-    termination_condition = propagation_setup.propagator.time_termination(simulation_time)
+    termination_condition = propagation_setup.propagator.time_termination(initial_epoch + simulation_time, True)
     # The settings object
     propagator_settings = propagation_setup.propagator.rotational(torque_model,
                                                                   bodies_to_propagate,
@@ -688,6 +687,7 @@ def get_periapses(keplerian_history: dict) -> list:
 
     return [periapsis for periapsis in peri if periapsis != [None, None]]
 
+
 def average_mean_motion_over_integer_number_of_orbits(keplerian_history: dict, gravitational_parameter: float) -> float:
 
     mean_motion_history = mean_motion_history_from_keplerian_history(keplerian_history, gravitational_parameter)
@@ -698,3 +698,7 @@ def average_mean_motion_over_integer_number_of_orbits(keplerian_history: dict, g
 
     return np.mean(mean_motion_over_integer_number_of_orbits), len(periapses)
 
+
+def get_synodic_period(period1: float, period2: float) -> float:
+
+    return 1.0/abs((1.0/period1)-(1.0/period2))

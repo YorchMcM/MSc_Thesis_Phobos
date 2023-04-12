@@ -55,10 +55,10 @@ bodies = get_solar_system(phobos_ephemerides, gravity_field_type, gravity_field_
 
 # DEFINE PROPAGATION
 if verbose: print('Setting up propagation...')
-simulation_time = 8300.0*constants.JULIAN_DAY
+simulation_time = 3500.0*constants.JULIAN_DAY
 mutual_spherical = propagation_setup.acceleration.mutual_spherical_harmonic_gravity_type
 mars_acceleration_dependent_variable = propagation_setup.dependent_variable.single_acceleration_norm(mutual_spherical, 'Phobos', 'Mars')
-# dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to_body_fixed_313_euler_angles('Phobos'),  # 0, 1, 2
+dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to_body_fixed_313_euler_angles('Phobos'),  # 0, 1, 2
                                 propagation_setup.dependent_variable.central_body_fixed_spherical_position('Mars', 'Phobos'),  # 3, 4, 5
                                 propagation_setup.dependent_variable.keplerian_state('Phobos', 'Mars'),  # 6, 7, 8, 9, 10, 11
                                 propagation_setup.dependent_variable.central_body_fixed_spherical_position('Phobos', 'Mars'),  # 12, 13, 14
@@ -76,8 +76,8 @@ propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time, 
 tic = time()
 if verbose: print('Simulating dynamics...')
 simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
-save2txt(simulator.state_history, 'phobos-ephemerides-8300.txt')
-save2txt(simulator.dependent_variable_history, 'a1-dependent-variables-8300.txt')
+# save2txt(simulator.state_history, 'phobos-ephemerides-8300.txt')
+# save2txt(simulator.dependent_variable_history, 'a1-dependent-variables-8300.txt')
 tac = time()
 print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
 
@@ -170,7 +170,11 @@ if checks[4]:
 
 '''    
 This propagation gives an average mean motion of 2.278563609852602e-4 rad/s = 19.68678958912648 rad/day. The associated
-orbital period is of 7h 39min 35.20s. (This solution is "accurate" up to the 8th significant digit.)
+orbital period is of 7h 39min 35.20s.
 The tweaked rotational motion in model A2 is of 2.28035245e-4 rad/s = 19.702245168 rad/day. The associated rotational
 period is of 7h 39min 13.57s.
+
+This propagated solution is accurate to the 8th significant digit. Performing a longer propagation (of 3500 days) and
+averaging over an integer number of orbits (10971 orbits) produces an average mean motion of
+2.2785636146219538e-4 rad/s = 19.68678963033368 rad/day. The associate orbital period is 7h 39min 35.20s.
 '''

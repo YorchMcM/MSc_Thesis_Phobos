@@ -15,6 +15,7 @@ The tweaked rotational motion in model A2 is of 2.28035245e-4 rad/s = 19.7022451
 period is of 7h 39min 13.57s.
 
 '''
+import os
 
 # IMPORTS
 import numpy as np
@@ -27,6 +28,7 @@ from time import time
 
 from tudatpy.kernel.interface import spice
 from tudatpy.kernel import constants
+from tudatpy.io import save2txt
 
 # The following lines set the defaults for plot fonts and font sizes.
 for font in fman.findSystemFonts(r'/home/yorch/thesis/Roboto_Slab'):
@@ -36,12 +38,20 @@ plt.rc('font', family = 'Roboto Slab')
 plt.rc('axes', titlesize = 18)
 plt.rc('axes', labelsize = 16)
 plt.rc('legend', fontsize = 14)
-plt.rc('text', usetex = True)
+# plt.rc('text', usetex = True)
 plt.rc('text.latex', preamble = r'\usepackage{amssymb, wasysym}')
 
 verbose = True
+save_results = True
 see_undamped = False
 average_mean_motion = 0.0002278563609852602
+phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, longitude slope goes down)
+
+#                                  4h,  8h,  16h,  1d 8h, 2d 16h, 5d 8h, 10d 16h, 21d 8h, 42d 16h, 85d 8h, 170d 16h, 341d 8h, 682d 16h  // Up to 6826d 16h in get_zero_proper_mode function
+dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0,  64.0,   128.0, 256.0,   512.0,  1024.0,  2048.0, 4096.0,   8192.0])*3600.0)  # In seconds.
+# dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0,  64.0,   128.0, 256.0,   512.0,  1024.0,  2048.0, 4096.0,   8192.0,  16384.0])*3600.0)  # In seconds.
+
+if save_results: save_dir = os.getcwd() + '/everything-works-results/model-a2/'
 
 # LOAD SPICE KERNELS
 if verbose: print('Loading kernels...')
@@ -59,7 +69,7 @@ bodies = get_solar_system(phobos_ephemerides, gravity_field_type, gravity_field_
 # DEFINE PROPAGATION
 if verbose: print('Setting up propagation...')
 initial_epoch = 13035.0  # This is (approximately) the first periapsis passage since J2000
-simulation_time = 90.0 * constants.JULIAN_DAY
+simulation_time = 10.0 * dissipation_times[-1]
 dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to_body_fixed_313_euler_angles('Phobos'),  # 0, 1, 2
                                 propagation_setup.dependent_variable.central_body_fixed_spherical_position('Mars', 'Phobos'),  # 3, 4, 5
                                 propagation_setup.dependent_variable.keplerian_state('Phobos', 'Mars'),  # 6, 7, 8, 9, 10, 11
@@ -74,61 +84,79 @@ dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to
                                 # torque_norm_from_body_on_phobos('Saturn')  # 24
                                 ]
 
-# SIMULATE UNDAMPED DYNAMICS FOR REFERENCE
-if see_undamped and verbose: print('Simulating dynamics...')
-phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, longitude slope goes down)
+# OBTAIN DAMPED INITIAL STATE
+if verbose: print('Simulating dynamics...')
 fake_initial_state = get_fake_initial_state(bodies, initial_epoch, phobos_mean_rotational_rate)
 fake_propagator_settings = get_model_a2_propagator_settings(bodies, simulation_time, fake_initial_state, dependent_variables_to_save)
-if see_undamped: simulator_undamped = numerical_simulation.create_dynamics_simulator(bodies, fake_propagator_settings)
-
-# OBTAIN DAMPED INITIAL STATE
-if verbose: print('Obtaining damped initial state...')
-#                                  4h, 8h, 16h, 1d 8h, 2d 16h, 5d 8h, 10d 16h, 21d 8h, 42d 16h, 85d 8h, 170d 16h, 341d 8h, 682d 16h  // Up to 6826d 16h in get_zero_proper_mode function
-dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0, 2048.0, 4096.0, 8192.0, 16384.0])*3600.0)  # In seconds.
 tic = time()
+print('Going into the depths of Tudat...')
 damping_results = numerical_simulation.propagation.get_zero_proper_mode_rotational_state(bodies,
                                                                                          fake_propagator_settings,
                                                                                          phobos_mean_rotational_rate,
                                                                                          dissipation_times)
 tac = time()
-damped_initial_state = damping_results.initial_state
-print('Time required to obtain damped initial state:', (tac - tic)/60.0, 'minutes.' )
 
+if verbose: print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
 
-# SIMULATE DAMPED DYNAMICS
-if verbose: print('Simulating damped dynamics...')
-propagator_settings = get_model_a2_propagator_settings(bodies, simulation_time, damped_initial_state, dependent_variables_to_save)
-simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
+if save_results:
+    print('Saving damping results...')
+    save2txt(damping_results.forward_backward_states[0][0], save_dir + 'states-undamped.txt')
+    save2txt(damping_results.forward_backward_dependent_variables[0][0], save_dir + 'dependents-undamped.txt')
+    for idx, current_damping_time in enumerate(dissipation_times[1:]):
+        time_str = str(int(current_damping_time / 3600.0))
+        save2txt(damping_results.forward_backward_states[idx][1], save_dir + 'states-d' + time_str + '.txt')
+        save2txt(damping_results.forward_backward_dependent_variables[idx][1], save_dir + 'dependents-d' + time_str + '.txt')
+    print('ALL RESULTS SAVED.')
 
-print('SIMULATIONS FINISHED.')
+if verbose:
+    if save_results: print('Simulating and saving full dynamics for all damping times...')
+    else:
+        print('Simulating full dynamics for all damping times...')
+        print('WARNING: Results for each dissipation time overwrites the results for the preceding one. To keep them all, please save the results.')
+tic = time()
+for idx, current_damping_time in enumerate(dissipation_times[:-1]):
+    time_str = str(int(current_damping_time / 3600.0))
+    print('Simulation ' + str(idx+1) + '/' + str(len(dissipation_times[:-1])))
+    current_initial_state = damping_results.forward_backward_states[idx][1][initial_epoch]
+    current_propagator_settings = get_model_a2_propagator_settings(bodies, simulation_time, current_initial_state, dependent_variables_to_save)
+    current_simulator = numerical_simulation.create_dynamics_simulator(bodies, current_propagator_settings)
+    save2txt(current_simulator.state_history, save_dir + 'states-d' + time_str + '-full.txt')
+    save2txt(current_simulator.dependent_variable_history, save_dir + 'dependents-d' + time_str + '-full.txt')
+tac = time()
+print('FULL RESULTS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
 
 # POST PROCESS (CHECKS)
-checks = [0, 0, 0, 1, 1, 1]
-mars_mu = bodies.get('Mars').gravitational_parameter
-epochs_array = np.array(list(simulator.state_history.keys()))
+checks = [0, 0, 0, 0, 0, 0]
+if sum(checks) > 0:
+    mars_mu = bodies.get('Mars').gravitational_parameter
+    states_undamped = damping_results.forward_backward_states[0][0]
+    dependents_undamped = damping_results.forward_backward_dependent_variables[0][0]
+    states_damped = damping_results.forward_backward_states[7][1]
+    dependents_damped = damping_results.forward_backward_dependent_variables[7][1]
+    epochs_array = np.array(list(states_damped.keys()))
 
 # Trajectory
 if checks[0]:
     if see_undamped:
-        cartesian_history_undamped = extract_elements_from_history(simulator_undamped.dependent_variable_history, [15, 16, 17])
+        cartesian_history_undamped = extract_elements_from_history(dependents_undamped, [15, 16, 17])
         trajectory_3d(cartesian_history_undamped, ['Phobos'], 'Mars')
-    cartesian_history = extract_elements_from_history(simulator.dependent_variable_history, [15, 16, 17])
+    cartesian_history = extract_elements_from_history(dependents_damped, [15, 16, 17])
     trajectory_3d(cartesian_history, ['Phobos'], 'Mars')
 
 # Orbit does not blow up.
 if checks[1]:
     if see_undamped:
-        keplerian_history_undamped = extract_elements_from_history(simulator_undamped.dependent_variable_history, [6, 7, 8, 9, 10, 11])
+        keplerian_history_undamped = extract_elements_from_history(dependents_undamped, [6, 7, 8, 9, 10, 11])
         plot_kepler_elements(keplerian_history_undamped, title = 'Undamped COEs')
-    keplerian_history = extract_elements_from_history(simulator.dependent_variable_history, [6, 7, 8, 9, 10, 11])
+    keplerian_history = extract_elements_from_history(dependents_damped, [6, 7, 8, 9, 10, 11])
     plot_kepler_elements(keplerian_history, title = 'Damped COEs')
 
 # Orbit is equatorial
 if checks[2]:
     if see_undamped:
-        sub_phobian_point_undamped = result2array(extract_elements_from_history(simulator_undamped.dependent_variable_history, [13, 14]))
+        sub_phobian_point_undamped = result2array(extract_elements_from_history(dependents_undamped, [13, 14]))
         sub_phobian_point_undamped[:,1:] = bring_inside_bounds(sub_phobian_point_undamped[:,1:], -PI, PI, include = 'upper')
-    sub_phobian_point = result2array(extract_elements_from_history(simulator.dependent_variable_history, [13, 14]))
+    sub_phobian_point = result2array(extract_elements_from_history(dependents_damped, [13, 14]))
     sub_phobian_point[:,1:] = bring_inside_bounds(sub_phobian_point[:,1:], -PI, PI, include = 'upper')
 
     if see_undamped:
@@ -166,14 +194,14 @@ if checks[3]:
     normal_mode = get_longitudinal_normal_mode_from_inertia_tensor(bodies.get('Phobos').inertia_tensor, phobos_mean_rotational_rate)
     clean_signal = [TWOPI, 1]
     if see_undamped:
-        euler_history_undamped = result2array(extract_elements_from_history(simulator_undamped.dependent_variable_history, [2, 1, 0]))
+        euler_history_undamped = result2array(extract_elements_from_history(dependents_undamped, [2, 1, 0]))
         euler_history_undamped[:,1:] = -euler_history_undamped[:,1:]
         euler_history_undamped = bring_history_inside_bounds(array2result(euler_history_undamped), 0.0, TWOPI)
         psi_freq_undamped, psi_amp_undamped = get_fourier_elements_from_history(extract_elements_from_history(euler_history_undamped, 0), clean_signal)
         theta_freq_undamped, theta_amp_undamped = get_fourier_elements_from_history(extract_elements_from_history(euler_history_undamped, 1), clean_signal)
         phi_freq_undamped, phi_amp_undamped = get_fourier_elements_from_history(extract_elements_from_history(euler_history_undamped, 2), clean_signal)
         euler_history_undamped = result2array(euler_history_undamped)
-    euler_history = result2array(extract_elements_from_history(simulator.dependent_variable_history, [2, 1, 0]))
+    euler_history = result2array(extract_elements_from_history(dependents_damped, [2, 1, 0]))
     euler_history[:,1:] = -euler_history[:,1:]
     euler_history = bring_history_inside_bounds(array2result(euler_history), 0.0, TWOPI)
     psi_freq, psi_amp = get_fourier_elements_from_history(extract_elements_from_history(euler_history, 0), clean_signal)
@@ -238,13 +266,13 @@ if checks[3]:
 # Phobos' x axis points towards Mars with a once-per-orbit longitudinal libration with amplitude as specified above.
 if checks[4]:
     if see_undamped:
-        sub_martian_point_undamped = result2array(extract_elements_from_history(simulator_undamped.dependent_variable_history, [4, 5]))
+        sub_martian_point_undamped = result2array(extract_elements_from_history(dependents_undamped, [4, 5]))
         sub_martian_point_undamped[:,1:] = bring_inside_bounds(sub_martian_point_undamped[:,1:], -PI, PI, include = 'upper')
-        libration_history_undamped = extract_elements_from_history(simulator_undamped.dependent_variable_history, 5)
+        libration_history_undamped = extract_elements_from_history(dependents_undamped, 5)
         libration_freq_undamped, libration_amp_undamped = get_fourier_elements_from_history(libration_history_undamped)
-    sub_martian_point = result2array(extract_elements_from_history(simulator.dependent_variable_history, [4, 5]))
+    sub_martian_point = result2array(extract_elements_from_history(dependents_damped, [4, 5]))
     sub_martian_point[:,1:] = bring_inside_bounds(sub_martian_point[:,1:], -PI, PI, include = 'upper')
-    libration_history = extract_elements_from_history(simulator.dependent_variable_history, 5)
+    libration_history = extract_elements_from_history(dependents_damped, 5)
     libration_freq, libration_amp = get_fourier_elements_from_history(libration_history)
 
     if see_undamped:
@@ -308,7 +336,7 @@ if checks[5]:
     third_bodies = ['Sun', 'Earth', 'Mars', 'Deimos', 'Jupiter']
 
     if see_undamped:
-        third_body_torques_undamped = result2array(extract_elements_from_history(simulator_undamped.dependent_variable_history, list(range(18,23))))
+        third_body_torques_undamped = result2array(extract_elements_from_history(dependents_undamped, list(range(18,23))))
         plt.figure()
         for idx, body in enumerate(third_bodies):
             plt.semilogy(epochs_array / 86400.0, third_body_torques_undamped[:,idx+1], label = body)
@@ -319,7 +347,7 @@ if checks[5]:
         plt.legend()
         plt.grid()
 
-    third_body_torques = result2array(extract_elements_from_history(simulator.dependent_variable_history, list(range(18,23))))
+    third_body_torques = result2array(extract_elements_from_history(dependents_damped, list(range(18,23))))
     plt.figure()
     for idx, body in enumerate(third_bodies):
         plt.semilogy(epochs_array / 86400.0, third_body_torques[:,idx+1], label = body)
@@ -329,3 +357,5 @@ if checks[5]:
     plt.yticks([1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15])
     plt.legend()
     plt.grid()
+
+print('PROGRAM COMPLETED SUCCESFULLY')
