@@ -59,7 +59,7 @@ spice.load_standard_kernels()
 
 # CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
 if verbose: print('Creating universe...')
-trajectory_file = 'everything-works-results/model-a1/perturbed-baseline.txt'
+trajectory_file = 'phobos-ephemerides-3500.txt'
 imposed_trajectory = read_vector_history_from_file(trajectory_file)
 phobos_ephemerides = environment_setup.ephemeris.tabulated(imposed_trajectory, 'Mars', 'J2000')
 gravity_field_type = 'QUAD'
@@ -70,24 +70,27 @@ bodies = get_solar_system(phobos_ephemerides, gravity_field_type, gravity_field_
 if verbose: print('Setting up propagation...')
 initial_epoch = 13035.0  # This is (approximately) the first periapsis passage since J2000
 simulation_time = 10.0 * dissipation_times[-1]
-dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to_body_fixed_313_euler_angles('Phobos'),  # 0, 1, 2
+euler_angles_wrt_mars_equator_dependent_variable = propagation_setup.dependent_variable.custom_dependent_variable(
+    MarsEquatorOfDate(bodies).get_euler_angles_wrt_mars_equator, 3)
+dependent_variables_to_save = [ euler_angles_wrt_mars_equator_dependent_variable,  # 0, 1, 2
                                 propagation_setup.dependent_variable.central_body_fixed_spherical_position('Mars', 'Phobos'),  # 3, 4, 5
                                 propagation_setup.dependent_variable.keplerian_state('Phobos', 'Mars'),  # 6, 7, 8, 9, 10, 11
                                 propagation_setup.dependent_variable.central_body_fixed_spherical_position('Phobos', 'Mars'),  # 12, 13, 14
                                 propagation_setup.dependent_variable.relative_position('Phobos', 'Mars'),  # 15, 16, 17
-                                torque_norm_from_body_on_phobos('Sun'),  # 18
-                                torque_norm_from_body_on_phobos('Earth'),  # 19
+                                # torque_norm_from_body_on_phobos('Sun'),  # 18
+                                # torque_norm_from_body_on_phobos('Earth'),  # 19
                                 # torque_norm_from_body_on_phobos('Moon'),  # 20
-                                torque_norm_from_body_on_phobos('Mars'),  # 21
-                                torque_norm_from_body_on_phobos('Deimos'),  # 22
-                                torque_norm_from_body_on_phobos('Jupiter')  # 23
+                                # torque_norm_from_body_on_phobos('Mars'),  # 21
+                                # torque_norm_from_body_on_phobos('Deimos'),  # 22
+                                # torque_norm_from_body_on_phobos('Jupiter')  # 23
                                 # torque_norm_from_body_on_phobos('Saturn')  # 24
                                 ]
 
 # OBTAIN DAMPED INITIAL STATE
 if verbose: print('Simulating dynamics...')
 fake_initial_state = get_fake_initial_state(bodies, initial_epoch, phobos_mean_rotational_rate)
-fake_propagator_settings = get_model_a2_propagator_settings(bodies, simulation_time, fake_initial_state, dependent_variables_to_save)
+fake_propagator_settings = get_model_a2_propagator_settings(bodies, simulation_time, initial_epoch, fake_initial_state,
+                                                            dependent_variables_to_save)
 tic = time()
 print('Going into the depths of Tudat...')
 damping_results = numerical_simulation.propagation.get_zero_proper_mode_rotational_state(bodies,
@@ -102,10 +105,10 @@ if save_results:
     print('Saving damping results...')
     save2txt(damping_results.forward_backward_states[0][0], save_dir + 'states-undamped.txt')
     save2txt(damping_results.forward_backward_dependent_variables[0][0], save_dir + 'dependents-undamped.txt')
-    for idx, current_damping_time in enumerate(dissipation_times[1:]):
+    for idx, current_damping_time in enumerate(dissipation_times):
         time_str = str(int(current_damping_time / 3600.0))
-        save2txt(damping_results.forward_backward_states[idx][1], save_dir + 'states-d' + time_str + '.txt')
-        save2txt(damping_results.forward_backward_dependent_variables[idx][1], save_dir + 'dependents-d' + time_str + '.txt')
+        save2txt(damping_results.forward_backward_states[idx+1][1], save_dir + 'states-d' + time_str + '.txt')
+        save2txt(damping_results.forward_backward_dependent_variables[idx+1][1], save_dir + 'dependents-d' + time_str + '.txt')
     print('ALL RESULTS SAVED.')
 
 if verbose:
@@ -114,9 +117,9 @@ if verbose:
         print('Simulating full dynamics for all damping times...')
         print('WARNING: Results for each dissipation time overwrites the results for the preceding one. To keep them all, please save the results.')
 tic = time()
-for idx, current_damping_time in enumerate(dissipation_times[:-1]):
+for idx, current_damping_time in enumerate(dissipation_times):
     time_str = str(int(current_damping_time / 3600.0))
-    print('Simulation ' + str(idx+1) + '/' + str(len(dissipation_times[:-1])))
+    print('Simulation ' + str(idx+1) + '/' + str(len(dissipation_times)))
     current_initial_state = damping_results.forward_backward_states[idx][1][initial_epoch]
     current_propagator_settings = get_model_a2_propagator_settings(bodies, simulation_time, current_initial_state, dependent_variables_to_save)
     current_simulator = numerical_simulation.create_dynamics_simulator(bodies, current_propagator_settings)
@@ -126,13 +129,13 @@ tac = time()
 print('FULL RESULTS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
 
 # POST PROCESS (CHECKS)
-checks = [0, 0, 0, 0, 0, 0]
+checks = [0, 0, 0, 1, 0, 0]
 if sum(checks) > 0:
     mars_mu = bodies.get('Mars').gravitational_parameter
     states_undamped = damping_results.forward_backward_states[0][0]
     dependents_undamped = damping_results.forward_backward_dependent_variables[0][0]
-    states_damped = damping_results.forward_backward_states[7][1]
-    dependents_damped = damping_results.forward_backward_dependent_variables[7][1]
+    states_damped = damping_results.forward_backward_states[-1][1]
+    dependents_damped = damping_results.forward_backward_dependent_variables[-1][1]
     epochs_array = np.array(list(states_damped.keys()))
 
 # Trajectory
@@ -194,16 +197,14 @@ if checks[3]:
     normal_mode = get_longitudinal_normal_mode_from_inertia_tensor(bodies.get('Phobos').inertia_tensor, phobos_mean_rotational_rate)
     clean_signal = [TWOPI, 1]
     if see_undamped:
-        euler_history_undamped = result2array(extract_elements_from_history(dependents_undamped, [2, 1, 0]))
-        euler_history_undamped[:,1:] = -euler_history_undamped[:,1:]
-        euler_history_undamped = bring_history_inside_bounds(array2result(euler_history_undamped), 0.0, TWOPI)
+        euler_history_undamped = extract_elements_from_history(dependents_undamped, [0, 1, 2])
+        euler_history_undamped = bring_history_inside_bounds(euler_history_undamped, 0.0, TWOPI)
         psi_freq_undamped, psi_amp_undamped = get_fourier_elements_from_history(extract_elements_from_history(euler_history_undamped, 0), clean_signal)
         theta_freq_undamped, theta_amp_undamped = get_fourier_elements_from_history(extract_elements_from_history(euler_history_undamped, 1), clean_signal)
         phi_freq_undamped, phi_amp_undamped = get_fourier_elements_from_history(extract_elements_from_history(euler_history_undamped, 2), clean_signal)
         euler_history_undamped = result2array(euler_history_undamped)
-    euler_history = result2array(extract_elements_from_history(dependents_damped, [2, 1, 0]))
-    euler_history[:,1:] = -euler_history[:,1:]
-    euler_history = bring_history_inside_bounds(array2result(euler_history), 0.0, TWOPI)
+    euler_history = extract_elements_from_history(dependents_damped, [0, 1, 2])
+    euler_history = bring_history_inside_bounds(euler_history, 0.0, TWOPI)
     psi_freq, psi_amp = get_fourier_elements_from_history(extract_elements_from_history(euler_history, 0), clean_signal)
     theta_freq, theta_amp = get_fourier_elements_from_history(extract_elements_from_history(euler_history, 1), clean_signal)
     phi_freq, phi_amp = get_fourier_elements_from_history(extract_elements_from_history(euler_history, 2), clean_signal)
@@ -213,10 +214,10 @@ if checks[3]:
         plt.figure()
         plt.plot(epochs_array / 86400.0, euler_history_undamped[:,1] * 360.0 / TWOPI, label = r'$\psi$')
         plt.plot(epochs_array / 86400.0, euler_history_undamped[:,2] * 360.0 / TWOPI, label = r'$\theta$')
-        plt.plot(epochs_array / 86400.0, euler_history_undamped[:,3] * 360.0 / TWOPI, label = r'$\phi$')
+        # plt.plot(epochs_array / 86400.0, euler_history_undamped[:,3] * 360.0 / TWOPI, label = r'$\phi$')
         plt.legend()
         plt.grid()
-        plt.xlim([0.0, 3.5])
+        # plt.xlim([0.0, 3.5])
         plt.title('Undamped Euler angles')
         plt.xlabel('Time [days since J2000]')
         plt.ylabel('Angle [º]')
@@ -224,10 +225,10 @@ if checks[3]:
     plt.figure()
     plt.plot(epochs_array / 86400.0, euler_history[:,1] * 360.0 / TWOPI, label = r'$\psi$')
     plt.plot(epochs_array / 86400.0, euler_history[:,2] * 360.0 / TWOPI, label = r'$\theta$')
-    plt.plot(epochs_array / 86400.0, euler_history[:,3] * 360.0 / TWOPI, label = r'$\phi$')
+    # plt.plot(epochs_array / 86400.0, euler_history[:,3] * 360.0 / TWOPI, label = r'$\phi$')
     plt.legend()
     plt.grid()
-    plt.xlim([0.0, 3.5])
+    # plt.xlim([0.0, 3.5])
     plt.title('Damped Euler angles')
     plt.xlabel('Time [days since J2000]')
     plt.ylabel('Angle [º]')
@@ -244,7 +245,7 @@ if checks[3]:
         plt.title(r'Undamped frequency content')
         plt.xlabel(r'$\omega$ [rad/day]')
         plt.ylabel(r'$A [º]$')
-        plt.xlim([0, 70])
+        # plt.xlim([0, 70])
         plt.grid()
         plt.legend()
 
@@ -259,7 +260,7 @@ if checks[3]:
     plt.title(r'Damped frequency content')
     plt.xlabel(r'$\omega$ [rad/day]')
     plt.ylabel(r'$A [º]$')
-    plt.xlim([0, 70])
+    # plt.xlim([0, 70])
     plt.grid()
     plt.legend()
 

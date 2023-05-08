@@ -70,14 +70,15 @@ dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to
                                 # acceleration_norm_from_body_on_phobos('Jupiter'),  # 20
                                 # acceleration_norm_from_body_on_phobos('Saturn')  # 25
                                 ]
-propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time, dependent_variables_to_save)
+initial_epoch = 0.0
+propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time, initial_epoch, dependent_variables_to_save)
 
 # SIMULATE DYNAMICS
 tic = time()
 if verbose: print('Simulating dynamics...')
 simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
-# save2txt(simulator.state_history, 'phobos-ephemerides-8300.txt')
-# save2txt(simulator.dependent_variable_history, 'a1-dependent-variables-8300.txt')
+save2txt(simulator.state_history, 'phobos-ephemerides-3500.txt')
+save2txt(simulator.dependent_variable_history, 'a1-dependent-variables-3500.txt')
 tac = time()
 print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
 

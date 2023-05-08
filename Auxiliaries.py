@@ -26,6 +26,25 @@ use('TkAgg')
 import matplotlib.pyplot as plt
 
 
+def rotation_matrix_x(angle: float) -> np.ndarray:
+
+    return np.array([[1.0,            0.0,            0.0],
+                     [0.0,  np.cos(angle),  np.sin(angle)],
+                     [0.0, -np.sin(angle),  np.cos(angle)]])
+
+
+def rotation_matrix_y(angle: float) -> np.ndarray:
+
+    return np.array([[np.cos(angle), 0.0, -np.sin(angle)],
+                     [          0.0, 1.0,            0.0],
+                     [np.sin(angle), 0.0, np.cos(angle)]])
+
+def rotation_matrix_z(angle: float) -> np.ndarray:
+
+    return np.array([[ np.cos(angle), np.sin(angle), 0.0],
+                     [-np.sin(angle), np.cos(angle), 0.0],
+                     [           0.0,           0.0, 1.0]])
+
 def quaternion_entries_to_euler_angles(quaternion: np.ndarray[4]) -> np.ndarray[3]:
 
     rotation_matrix = quat2mat(quaternion)
@@ -153,6 +172,9 @@ def get_solar_system(ephemerides: environment_setup.ephemeris.EphemerisSettings,
     # Ephemeris and rotation models.
     body_settings.get('Phobos').rotation_model_settings = environment_setup.rotation_model.synchronous('Mars', 'J2000', 'Phobos_body_fixed')
     body_settings.get('Phobos').ephemeris_settings = ephemerides
+    if type(ephemerides) == environment_setup.ephemeris.TabulatedEphemerisSettings:
+        days, hours, minutes, seconds = get_epoch_elements_from_epoch(list(ephemerides.body_state_history.keys())[-1])
+        print('EPHEMERIS INFO: This ephemeris spans ' + str(days) + ' days, ' + str(hours) + ' hours, ' + str(minutes) + ' minutes, ' + str(seconds) + ' seconds.')
     # Gravity field.
     body_settings.get('Phobos').gravity_field_settings = get_gravitational_field('Phobos_body_fixed', field_type, field_source)
 
@@ -172,6 +194,7 @@ def get_solar_system(ephemerides: environment_setup.ephemeris.EphemerisSettings,
 
 def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
                                      simulation_time: float,
+                                     initial_epoch: float = 0.0,
                                      dependent_variables: list[propagation_setup.dependent_variable.PropagationDependentVariables] = [])\
         -> propagation_setup.propagator.TranslationalStatePropagatorSettings:
 
@@ -210,7 +233,7 @@ def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
     acceleration_settings = {'Phobos': acceleration_settings_on_phobos}
     acceleration_model = propagation_setup.create_acceleration_models(bodies, acceleration_settings, bodies_to_propagate, central_bodies)
     # INTEGRATOR
-    time_step = 300.0  # These are 300s = 5min
+    time_step = 450.0  # These are 300s = 5min / 450s = 7.5min
     coefficients = propagation_setup.integrator.CoefficientSets.rkdp_87
     integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(time_step,
                                                                                       coefficients,
@@ -219,7 +242,6 @@ def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
                                                                                       np.inf, np.inf)
     # PROPAGATION SETTINGS
     # Initial conditions
-    initial_epoch = 0.0
     initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'J2000', 'NONE', initial_epoch)
     # Termination condition
     termination_condition = propagation_setup.propagator.time_termination(initial_epoch + simulation_time, True)
@@ -277,7 +299,7 @@ def get_model_a2_propagator_settings(bodies: environment.SystemOfBodies,
     torque_model = propagation_setup.create_torque_models(bodies, torque_settings, bodies_to_propagate)
 
     # INTEGRATOR
-    time_step = 300.0  # These are 300s = 5min
+    time_step = 300.0  # These are 300s = 5min / 450s = 7.5min
     coefficients = propagation_setup.integrator.CoefficientSets.rkdp_87
     integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(time_step,
                                                                                       coefficients,
@@ -298,6 +320,7 @@ def get_model_a2_propagator_settings(bodies: environment.SystemOfBodies,
                                                                   termination_condition,
                                                                   output_variables = dependent_variables)
 
+    #check_ephemeris_sufficiency(bodies, initial_epoch + simulation_time)
     return propagator_settings
 
 
@@ -311,14 +334,29 @@ def get_model_b_propagator_settings(bodies: environment.SystemOfBodies,
     central_bodies = ['Mars']
 
     # ACCELERATION SETTINGS
-    acceleration_settings_on_phobos = dict(
-        Mars=[propagation_setup.acceleration.mutual_spherical_harmonic_gravity(12, 12, 2, 2)])
+    third_body_force = propagation_setup.acceleration.point_mass_gravity()
+    acceleration_settings_on_phobos = dict(Mars=[propagation_setup.acceleration.mutual_spherical_harmonic_gravity(12, 12, 2, 2)],
+                                           Sun=[third_body_force],
+                                           Earth=[third_body_force],
+                                           # Moon=[third_body_force],
+                                           Deimos=[third_body_force],
+                                           Jupiter=[third_body_force],
+                                           # Saturn=[third_body_force]
+                                           )
     acceleration_settings = {'Phobos': acceleration_settings_on_phobos}
     acceleration_model = propagation_setup.create_acceleration_models(bodies, acceleration_settings,
                                                                       bodies_to_propagate, central_bodies)
 
     # TORQUE SETTINGS
-    torque_settings_on_phobos = dict(Mars=[propagation_setup.torque.spherical_harmonic_gravitational(2, 2)])
+    torque_on_phobos = propagation_setup.torque.spherical_harmonic_gravitational(2, 2)
+    torque_settings_on_phobos = dict(Mars=[torque_on_phobos],
+                                     Sun=[torque_on_phobos],
+                                     Earth=[torque_on_phobos],
+                                     # Moon=[torque_on_phobos],
+                                     Deimos=[torque_on_phobos],
+                                     Jupiter=[torque_on_phobos]
+                                     # Saturn=[torque_on_phobos]
+                                     )
     torque_settings = {'Phobos': torque_settings_on_phobos}
     torque_model = propagation_setup.create_torque_models(bodies, torque_settings, bodies_to_propagate)
 
@@ -364,6 +402,7 @@ def get_model_b_propagator_settings(bodies: environment.SystemOfBodies,
                                                                  termination_condition,
                                                                  output_variables = dependent_variables)
 
+    #check_ephemeris_sufficiency(bodies, initial_epoch + simulation_time)
     return propagator_settings
 
 
@@ -702,3 +741,123 @@ def average_mean_motion_over_integer_number_of_orbits(keplerian_history: dict, g
 def get_synodic_period(period1: float, period2: float) -> float:
 
     return 1.0/abs((1.0/period1)-(1.0/period2))
+
+
+def check_ephemeris_sufficiency(bodies: environment.SystemOfBodies, max_simulation_epoch: float) -> None:
+
+    available_states = bodies.get('Phobos').ephemeris.body_state_history
+    max_ephemeris_epoch = list(available_states.keys())[-1]
+
+    if max_ephemeris_epoch < max_simulation_epoch:
+        raise Warning('Insufficient ephemerides loaded for requested propagation.\nLargest simulation epoch: '
+                      + str(max_simulation_epoch) + '\nMax ephemeris epoch: ' + str(max_ephemeris_epoch))
+
+    return
+
+
+def rotation_matrix_to_313_euler_angles(matrix: np.ndarray) -> np.ndarray:
+
+    '''
+
+    This function is a direct implementation of Eq.(A6) in Fukushima (2012). Given a matrix R such that v = Ru, where u
+    is a vector expressed in body-fixed frame and v is expressed in inertial frame, it returns the 3-1-3 Euler angles
+    that define this rotation.
+
+    :param matrix: Rotation matrix.
+    :return: 3-1-3 Euler angles
+
+    '''
+
+    psi = bring_inside_bounds(np.arctan2(matrix[0,2], -matrix[1,2]), 0.0, TWOPI)
+    theta = np.arccos(matrix[2,2])
+    phi = bring_inside_bounds(np.arctan2(matrix[2,0], matrix[2,1]), 0.0, TWOPI)
+
+    return np.array([psi, theta, phi])
+
+
+def euler_angles_to_rotation_matrix(euler_angles: np.ndarray) -> np.ndarray:
+
+    '''
+
+    Given the three Euler angles that characterize a rotation, this function returns a matrix R such that v = Ru,
+    where u is a vector expressed in body-fixed frame and v is expressed in inertial frame.
+
+    :param euler_angles: 3-1-3 Euler angles
+    :return: Rotation matrix
+
+    '''
+
+    psi, theta, phi = euler_angles
+
+    R_psi = rotation_matrix_z(psi)
+    R_theta = rotation_matrix_x(theta)
+    R_phi = rotation_matrix_z(phi)
+
+    body_fixed_to_inertial = R_phi @ R_theta @ R_psi  # This is the TRANSPOSE of Eq.(A4) in Fukushima et al. (2012)
+    body_fixed_to_inertial = body_fixed_to_inertial.T
+
+    return body_fixed_to_inertial
+
+
+def rotate_euler_angles(original_angles: np.ndarray, rotation_matrix: np.ndarray) -> np.ndarray:
+
+    '''
+
+    Consider three reference frames A, B and C. Consider the three angles that define the rotation from frame A to frame
+    B, and the associated rotation matrix R^(A/B), such that u^(A) = R^(A/B)u^(B). We now want the rotation matrix
+    R^(C/B) such that u^(C) = R^(C/B)u^(B) and the three Euler angles associated to that rotation. This function returns
+    these three Euler angles.
+
+    For this, one needs the original three Euler angles and a definition for the rotation between frames A and C. This
+    function will take the rotation matrix R^(A/C), such that u^(A) = R^(A/C)u^(C).
+
+    Given these inputs, the first step will be to obtain R^(A/B), then obtain R^(C/B) = R^(C/A)*R^(A/B), where R^(C/A)
+    is the inverse and transpose of R^(A/C), and then extract the three Euler angles of this new R^(C/B).
+
+    :param original_euler_angles: Original 3-1-3 Euler angles
+    :param rotation_matrix: R^(A/C)
+    :return: Rotation matrix
+
+    '''
+
+    R_AB = euler_angles_to_rotation_matrix(original_angles)
+    R_CB = rotation_matrix.T @ R_AB
+    new_euler_angles = rotation_matrix_to_313_euler_angles(R_CB)
+
+    return new_euler_angles
+
+
+class MarsEquatorOfDate():
+
+    def __init__(self, bodies: environment.SystemOfBodies):
+
+        self.alpha_0 = np.radians(317.269202)
+        self.delta_0 = np.radians(54.432516)
+        self.W = np.radians(176.049863)
+
+        self.phobos = bodies.get('Phobos')
+
+        self.mars_to_j2000_rotation = self.get_mars_to_J2000_rotation_matrix()
+        self.j2000_to_mars_rotation = self.mars_to_j2000_rotation.T
+
+        return
+
+    def get_mars_to_J2000_rotation_matrix(self):
+
+        psi = bring_inside_bounds(PI/2 + self.alpha_0, 0.0, TWOPI)
+        theta = bring_inside_bounds(PI/2 - self.delta_0, 0.0, TWOPI)
+        phi = bring_inside_bounds(self.W, 0.0, TWOPI)
+
+        return euler_angles_to_rotation_matrix([psi, theta, phi])
+
+    def get_euler_angles_wrt_mars_equator(self) -> np.ndarray:
+
+        phobos_to_J2000_rotation_matrix = self.phobos.body_fixed_to_inertial_frame
+        phobos_to_mars_rotation_matrix = self.j2000_to_mars_rotation @ phobos_to_J2000_rotation_matrix
+
+        return rotation_matrix_to_313_euler_angles(phobos_to_mars_rotation_matrix)
+
+    def rotate_euler_angles_from_J2000_to_mars_equator(self, euler_angles_j2000: np.ndarray) -> np.ndarray:
+
+        return rotate_euler_angles(euler_angles_j2000, self.mars_j2000_rotation)
+
