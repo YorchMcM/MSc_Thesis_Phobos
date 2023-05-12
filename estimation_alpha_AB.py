@@ -1,32 +1,7 @@
-import numpy as np
-from time import time
 from Auxiliaries import *
 
-from tudatpy.kernel.numerical_simulation import environment_setup, estimation_setup, estimation
+from tudatpy.kernel.numerical_simulation import estimation, estimation_setup, Estimator
 from tudatpy.kernel.numerical_simulation.estimation_setup import observation, parameter
-from tudatpy.io import save2txt
-from tudatpy.kernel.interface import spice
-
-from cycler import cycler
-from matplotlib import use
-use('TkAgg')
-import matplotlib.pyplot as plt
-import matplotlib.font_manager as fman
-
-# The following lines set the defaults for plot fonts and font sizes.
-for font in fman.findSystemFonts(r'/home/yorch/thesis/Roboto_Slab'):
-    fman.fontManager.addfont(font)
-
-plt.rc('font', family = 'Roboto Slab')
-plt.rc('axes', titlesize = 18)
-plt.rc('axes', labelsize = 16)
-plt.rc('legend', fontsize = 14)
-plt.rc('text.latex', preamble = r'\usepackage{amssymb, wasysym}')
-color_list = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E', '#77AC30', '#4DBEEE', '#A2142F', '#7f7f7f', '#bcbd22', '#17becf']
-plt.rcParams['axes.prop_cycle'] = cycler('color', color_list)
-plt.rcParams['lines.markersize'] = 6.0
-
-spice.load_standard_kernels()
 
 # CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
 trajectory_file = '/home/yorch/thesis/everything-works-results/model-b/states-d8192.txt'
@@ -36,11 +11,8 @@ gravity_field_type = 'QUAD'
 gravity_field_source = 'Le Maistre'
 libration_amplitude = 1.1  # In degrees
 ecc_scale = 0.015034167790105173
-scaled_amplitude = 0.0 # np.radians(libration_amplitude) / ecc_scale
+scaled_amplitude = np.radians(libration_amplitude) / ecc_scale
 bodies = get_solar_system(phobos_ephemerides, gravity_field_type, gravity_field_source, scaled_amplitude)
-
-# FIRST, WE PROPAGATE THE DYNAMICS AND WE SET PHOBOS' EPHEMERIS TO THE INTEGRATED RESULTS.
-# WE ACTUALLY DON'T NEED THIS FOR THE POSITION OBSERVATIONS.
 
 # PROPAGATOR
 simulation_time = 3.0 * constants.JULIAN_YEAR
@@ -53,8 +25,6 @@ parameter_settings = estimation_setup.parameter.initial_states(propagator_settin
 parameters_to_estimate = estimation_setup.create_parameter_set(parameter_settings, bodies)
 
 # LINK SET UP
-# link_ends = { observation.LinkEndType.transmitter : observation.body_origin_link_end_id('Mars'),
-#               observation.LinkEndType.receiver : observation.body_origin_link_end_id('Phobos') }
 link_ends = { observation.observed_body : observation.body_origin_link_end_id('Phobos') }
 link = observation.link_definition(link_ends)
 
@@ -88,7 +58,7 @@ estimation_input = estimation.EstimationInput(observation_collection, convergenc
 # AND NOW WE CREATE THE ESTIMATOR OBJECT, WE PROPAGATE THE VARIATIONAL EQUATIONS AND WE ESTIMATE
 print('Going into the depths of tudat...')
 tic = time()
-estimator = numerical_simulation.Estimator(
+estimator = Estimator(
     bodies,
     parameters_to_estimate,
     [observation_model_settings],
@@ -103,37 +73,10 @@ print('Estimation completed. Time taken:', (tac - tic) / 60.0, 'min')
 
 # SAVE RESULTS
 save_dir = getcwd() + '/estimation-ab/alpha/'
-number_of_iterations = estimation_output.residual_history.shape[1]
-residual_history, parameter_evolution, residual_rms_evolution = extract_estimation_output(estimation_output, list(observation_times), 'position')
-# El residual_rms_evolution sigue saliendo mal, y todo es constante !
 
-true_initial_state = get_true_initial_state(bodies, initial_estimation_epoch)
+# number_of_iterations = estimation_output.residual_history.shape[1]
+residual_history, parameter_evolution, residual_rms_evolution = extract_estimation_output(estimation_output, list(observation_times), 'position')
 
 save2txt(residual_history, save_dir + 'residual-history.txt')
 save2txt(parameter_evolution, save_dir + 'parameter-evolution.txt')
 save2txt(residual_rms_evolution, save_dir + 'rms-evolution.txt')
-
-residual_array = result2array(residual_history)
-plt.figure()
-for k in range(number_of_iterations):
-    plt.plot((residual_array[:,0] - initial_estimation_epoch) / 86400.0, residual_array[:,3*k+1], label = 'x (Iter ' + str(k+1) + ')')
-    # plt.plot((residual_array[:,0] - initial_estimation_epoch) / 86400.0, residual_array[:,3*k+1], c = color_list[k], label = 'x (Iter ' + str(k+1) + ')')
-    # plt.plot((residual_array[:,0] - initial_estimation_epoch) / 86400.0, residual_array[:,3*k+2], c=color_list[k], label='y (Iter ' + str(k+1) + ')', ls = '--')
-    # plt.plot((residual_array[:,0] - initial_estimation_epoch) / 86400.0, residual_array[:,3*k+3], c=color_list[k], label='z (Iter ' + str(k+1) + ')', ls = '-.')
-plt.grid()
-plt.xlabel('Time since estimation start [days]')
-plt.ylabel('Position residuals [m]')
-plt.legend()
-plt.title('Residual history')
-
-residual_rms_evolution = get_position_rms_evolution(residual_history)
-rms_array = result2array(residual_rms_evolution)
-plt.figure()
-plt.plot(rms_array[:,0], rms_array[:,1], label = 'x', marker = '.')
-plt.plot(rms_array[:,0], rms_array[:,2], label = 'y', marker = '.')
-plt.plot(rms_array[:,0], rms_array[:,3], label = 'z', marker = '.')
-plt.grid()
-plt.xlabel('Iteration number')
-plt.ylabel('Residual rms [m]')
-plt.legend()
-plt.title('Residual root mean square')

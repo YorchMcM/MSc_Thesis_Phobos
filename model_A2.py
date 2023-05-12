@@ -1,48 +1,41 @@
 '''
-In this script we will define model A2. It includes:
 
-· Translational model: the states output by model A1
-· Initial epoch: 01/01/2000 at 15:37:15 (first periapsis passage)
-· Initial state: damped initial state provided by Tudat.
-· Simulation time: 90 days
-· Integrator: fixed-step RKDP7(8) with a time step of 5 minutes
-· Torques: Mars' center of mass on Phobos' quadrupole gravity field.
-· Propagator: Quaternion and angular velocity vector.
+In this script we will define model A2. It propagates the rotational dynamics ALONE.
+
+Note: the elements marked with an asterisk (*) are partially or fully defined in this script and are regarded as
+something close to "user inputs". The others are fully set somewhere in the Auxiliaries module.
+
+ENVIRONMENT
+· Global frame origin: Mars' center of mass
+· Global frame orientation: Earth's equator of J2000
+* Ephemeris model: Tabulated states propagated by model A1.
+· Mars' gravity field: default from Tudat
+* Phobos' gravity field: From Le Maistre (2019)
+· Ephemerides and gravitational parameters of all other bodies: defaults from Tudat
+
+TORQUES
+· Mars' center of mass on Phobos' quadrupole gravity field.
+
+PROPAGATOR
+· Propagator: Quaternion and angular velocity vector
+* Initial epoch: 01/01/2000 at 15:37:15 (first periapsis passage)
+· Initial state: Tudat-generated damped initial state
+* Simulation time: 10 times the largest dissipation time
+
+INTEGRATOR
+· Integrator: fixed-step RKDP7(8) with a fixed time step of 5 minutes
 
 The propagation in model A1 gives an average mean motion of 2.278563609852602e-4 rad/s = 19.68678958912648 rad/day. The
 associated orbital period is of 7h 39min 35.20s.
-The tweaked rotational motion in model A2 is of 2.28035245e-4 rad/s = 19.702245168 rad/day. The associated rotational
+The tweaked rotational motion in this model is of 2.28035245e-4 rad/s = 19.702245168 rad/day. The associated rotational
 period is of 7h 39min 13.57s.
 
 '''
-import os
 
-# IMPORTS
-import numpy as np
-from matplotlib import use
-use('TkAgg')
-from matplotlib import pyplot as plt
-import matplotlib.font_manager as fman
 from Auxiliaries import *
-from time import time
-
-from tudatpy.kernel.interface import spice
-from tudatpy.kernel import constants
-from tudatpy.io import save2txt
-
-# The following lines set the defaults for plot fonts and font sizes.
-for font in fman.findSystemFonts(r'/home/yorch/thesis/Roboto_Slab'):
-    fman.fontManager.addfont(font)
-
-plt.rc('font', family = 'Roboto Slab')
-plt.rc('axes', titlesize = 18)
-plt.rc('axes', labelsize = 16)
-plt.rc('legend', fontsize = 14)
-# plt.rc('text', usetex = True)
-plt.rc('text.latex', preamble = r'\usepackage{amssymb, wasysym}')
 
 verbose = True
-save_results = True
+save_results = False
 see_undamped = False
 average_mean_motion = 0.0002278563609852602
 phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, longitude slope goes down)
@@ -51,7 +44,7 @@ phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, l
 dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0,  64.0,   128.0, 256.0,   512.0,  1024.0,  2048.0, 4096.0,   8192.0])*3600.0)  # In seconds.
 # dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0,  64.0,   128.0, 256.0,   512.0,  1024.0,  2048.0, 4096.0,   8192.0,  16384.0])*3600.0)  # In seconds.
 
-if save_results: save_dir = os.getcwd() + '/everything-works-results/model-a2/'
+if save_results: save_dir = getcwd() + '/everything-works-results/model-a2/'
 
 # LOAD SPICE KERNELS
 if verbose: print('Loading kernels...')
@@ -121,15 +114,16 @@ for idx, current_damping_time in enumerate(dissipation_times):
     time_str = str(int(current_damping_time / 3600.0))
     print('Simulation ' + str(idx+1) + '/' + str(len(dissipation_times)))
     current_initial_state = damping_results.forward_backward_states[idx][1][initial_epoch]
-    current_propagator_settings = get_model_a2_propagator_settings(bodies, simulation_time, current_initial_state, dependent_variables_to_save)
+    current_propagator_settings = get_model_a2_propagator_settings(bodies, simulation_time, initial_epoch, current_initial_state, dependent_variables_to_save)
     current_simulator = numerical_simulation.create_dynamics_simulator(bodies, current_propagator_settings)
-    save2txt(current_simulator.state_history, save_dir + 'states-d' + time_str + '-full.txt')
-    save2txt(current_simulator.dependent_variable_history, save_dir + 'dependents-d' + time_str + '-full.txt')
+    if save_results:
+        save2txt(current_simulator.state_history, save_dir + 'states-d' + time_str + '-full.txt')
+        save2txt(current_simulator.dependent_variable_history, save_dir + 'dependents-d' + time_str + '-full.txt')
 tac = time()
 print('FULL RESULTS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
 
 # POST PROCESS (CHECKS)
-checks = [0, 0, 0, 1, 0, 0]
+checks = [0, 0, 0, 0, 0, 0]
 if sum(checks) > 0:
     mars_mu = bodies.get('Mars').gravitational_parameter
     states_undamped = damping_results.forward_backward_states[0][0]

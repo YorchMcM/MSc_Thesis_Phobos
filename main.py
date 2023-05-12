@@ -1,36 +1,5 @@
-import os
-import sys
-import numpy as np
 from Auxiliaries import *
-from numpy import pi as PI
 import myconstants
-from Logistics import read_vector_history_from_file, extract_elements_from_history
-from cycler import cycler
-from matplotlib import use
-use('TkAgg')
-import matplotlib.pyplot as plt
-import matplotlib.font_manager as fman
-TWOPI = 2*PI
-
-# sys.path.insert(0, '/home/yorch/tudat-bundle/cmake-build-release/tudatpy')
-
-from tudatpy.kernel.numerical_simulation import environment_setup
-from tudatpy.kernel.interface import spice
-
-# The following lines set the defaults for plot fonts and font sizes.
-for font in fman.findSystemFonts(r'/home/yorch/thesis/Roboto_Slab'):
-    fman.fontManager.addfont(font)
-
-plt.rc('font', family = 'Roboto Slab')
-plt.rc('axes', titlesize = 18)
-plt.rc('axes', labelsize = 16)
-plt.rc('legend', fontsize = 14)
-plt.rc('text.latex', preamble = r'\usepackage{amssymb, wasysym}')
-plt.rcParams['axes.prop_cycle'] = cycler('color', ['#0072BD', '#D95319', '#EDB120', '#7E2F8E',
-                                                   '#77AC30', '#4DBEEE', '#A2142F', '#7f7f7f', '#bcbd22', '#17becf'])
-plt.rcParams['lines.markersize'] = 6.0
-
-spice.load_standard_kernels()
 
 average_mean_motion = myconstants.average_mean_motion
 normal_mode = myconstants.normal_mode
@@ -64,7 +33,7 @@ bodies = get_solar_system(phobos_ephemerides, gravity_field_type, gravity_field_
 #     dissipation_slash = dissipation_times[first_dissipation_index:last_dissipation_index]
 #     array_size = last_dissipation_index - first_dissipation_index
 
-read_dir = os.getcwd() + '/estimation-ab/alpha/'
+read_dir = getcwd() + '/estimation-ab/alpha/'
 # # freq_undamped, amp_undamped = get_fourier_elements_from_history(extract_elements_from_history(
 # #     read_vector_history_from_file(read_dir + 'dependents-undamped.txt'), 5))
 #
@@ -511,85 +480,3 @@ read_dir = os.getcwd() + '/estimation-ab/alpha/'
 # plt.ylabel(r'$A [º]$')
 # plt.grid()
 # plt.legend()
-
-###########################################################################################################################
-
-initial_estimation_epoch = 1.0 * constants.JULIAN_YEAR
-true_initial_state = bodies.get('Phobos').ephemeris.interpolator.interpolate(initial_estimation_epoch)
-residual_history = read_vector_history_from_file(read_dir + 'residual-history.txt')
-parameter_evolution = read_vector_history_from_file(read_dir + 'parameter-evolution.txt')
-residual_rms_evolution = read_vector_history_from_file(read_dir + 'rms-evolution.txt')
-
-number_of_iterations = len(list(parameter_evolution.keys()))
-
-residual_history_array = result2array(residual_history)
-parameter_evolution_array = result2array(parameter_evolution)
-rms_array = result2array(residual_rms_evolution)
-
-number_of_iterations = int(parameter_evolution_array.shape[0] - 1)
-for k in range(number_of_iterations):
-    plt.figure()
-    plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, residual_history_array[:,3*k+1] / 1000.0, label = 'x')
-    plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, residual_history_array[:,3*k+2] / 1000.0, label = 'y')
-    plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, residual_history_array[:,3*k+3] / 1000.0, label = 'z')
-    plt.grid()
-    plt.xlabel('Time since estimation start [days]')
-    plt.ylabel('Position residuals [km]')
-    plt.legend()
-    plt.title('Residual history (iteration ' + str(k+1) + ')')
-
-plt.figure()
-plt.plot(rms_array[:,0], rms_array[:,1] / 1000.0, label = 'x', marker = '.')
-plt.plot(rms_array[:,0], rms_array[:,2] / 1000.0, label = 'y', marker = '.')
-plt.plot(rms_array[:,0], rms_array[:,3] / 1000.0, label = 'z', marker = '.')
-plt.grid()
-plt.xlabel('Iteration number')
-plt.ylabel('Residual rms [km]')
-plt.legend()
-plt.title('Residual root mean square')
-
-plt.figure()
-plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,1] / 1000.0, label = r'$x_o$', marker = '.')
-plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,2] / 1000.0, label = r'$y_o$', marker = '.')
-plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,3] / 1000.0, label = r'$z_o$', marker = '.')
-plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,4], label = r'$v_{x,o}$', marker = '.')
-plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,5], label = r'$v_{y,o}$', marker = '.')
-plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,6], label = r'$v_{z,o}$', marker = '.')
-plt.grid()
-plt.xlabel('Iteration number')
-plt.ylabel('Parameter value [km | m/s]')
-plt.legend()
-plt.title('Parameter history')
-
-plt.figure()
-plt.plot(parameter_evolution_array[:,0], (parameter_evolution_array[:,1] - true_initial_state[0]) / 1000.0, label = r'$x_o$', marker = '.')
-plt.plot(parameter_evolution_array[:,0], (parameter_evolution_array[:,2] - true_initial_state[1]) / 1000.0, label = r'$y_o$', marker = '.')
-plt.plot(parameter_evolution_array[:,0], (parameter_evolution_array[:,3] - true_initial_state[2]) / 1000.0, label = r'$z_o$', marker = '.')
-plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,4] - true_initial_state[3], label = r'$v_{x,o}$', marker = '.')
-plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,5] - true_initial_state[4], label = r'$v_{y,o}$', marker = '.')
-plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,6] - true_initial_state[5], label = r'$v_{z,o}$', marker = '.')
-plt.grid()
-plt.xlabel('Iteration number')
-plt.ylabel('Parameter difference from truth [km | m/s]')
-plt.legend()
-plt.title('Parameter history')
-
-parameter_changes = np.zeros([number_of_iterations, 6])
-for k in range(number_of_iterations):
-    parameter_changes[k,:] = parameter_evolution[k+1] - parameter_evolution[k]
-
-plt.figure()
-plt.plot(parameter_evolution_array[1:,0], abs(parameter_changes[:,0]) / 1000.0, label = r'$x_o$', marker = '.')
-plt.plot(parameter_evolution_array[1:,0], abs(parameter_changes[:,1]) / 1000.0, label = r'$y_o$', marker = '.')
-plt.plot(parameter_evolution_array[1:,0], abs(parameter_changes[:,2]) / 1000.0, label = r'$z_o$', marker = '.')
-plt.plot(parameter_evolution_array[1:,0], abs(parameter_changes[:,3]), label = r'$v_{x,o}$', marker = '.')
-plt.plot(parameter_evolution_array[1:,0], abs(parameter_changes[:,4]), label = r'$v_{y,o}$', marker = '.')
-plt.plot(parameter_evolution_array[1:,0], abs(parameter_changes[:,5]), label = r'$v_{z,o}$', marker = '.')
-plt.yscale('log')
-plt.grid()
-plt.xlabel('Iteration number')
-plt.ylabel('Parameter change [km | m/s]')
-plt.legend()
-plt.title('Parameter change between pre- and post-fit')
-
-print('PROGRAM COMPLETED SUCCESFULLY')

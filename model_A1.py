@@ -1,46 +1,38 @@
 '''
-In this script we will define model A1. It includes:
 
-· Rotational model: synchronous + once-per-orbit longitudinal libration of amplitude 1.1º (Rambaux et al. 2012)
-· Initial epoch: J2000 (01/01/2000 at 12:00)
-· Initial state: from spice.
-· Simulation time: 90 days
-· Integrator: fixed-step RKDP7(8) with a time step of 5 minutes
-· Accelerations: Mars' harmonic coefficients up to degree and order 12. Phobos' quadrupole gravity field (C20 & C22).
-· Propagator: Cartesian states
+In this script we will define model A1. It propagates the translational dynamics ALONE.
+
+Note: the elements marked with an asterisk (*) are partially or fully defined in this script and are regarded as
+something close to "user inputs". The others are fully set somewhere in the Auxiliaries module.
+
+ENVIRONMENT
+· Global frame origin: Mars' center of mass
+· Global frame orientation: Earth's equator of J2000
+* Rotational model: synchronous + once-per-orbit longitudinal libration of amplitude 1.1º (Rambaux et al. 2012)
+· Mars' gravity field: default from Tudat
+* Phobos' gravity field: From Le Maistre (2019)
+· Ephemerides and gravitational parameters of all other bodies: defaults from Tudat
+
+ACCELERATIONS
+· Mars' harmonic coefficients up to degree and order 12.
+· Phobos' quadrupole gravity field (C20 & C22).
+· Third-body point-mass forces by the Sun, Earth, Moon, Deimos, Jupiter and Saturn
+
+PROPAGATOR
+· Propagator: Cowell
+* Initial epoch: J2000 (01/01/2000 at 12:00)
+· Initial state: from spice at initial epoch.
+* Simulation time: 3500 days
+
+INTEGRATOR
+· Integrator: fixed-step RKDP7(8) with a fixed time step of 5 minutes
 
 '''
 
-# IMPORTS
-from matplotlib import use
-use('TkAgg')
-from matplotlib.gridspec import GridSpec
-from matplotlib import pyplot as plt
-import matplotlib.font_manager as fman
 from Auxiliaries import *
-from time import time
-
-sys.path.insert(0, '/home/yorch/tudat-bundle/cmake-build-release/tudatpy')
-
-from tudatpy.kernel.interface import spice
-from tudatpy.io import save2txt
-
-# The following lines set the defaults for plot fonts and font sizes.
-for font in fman.findSystemFonts(r'/home/yorch/thesis/Roboto_Slab'):
-    fman.fontManager.addfont(font)
-
-plt.rc('font', family = 'Roboto Slab')
-plt.rc('axes', titlesize = 18)
-plt.rc('axes', labelsize = 16)
-plt.rc('legend', fontsize = 14)
-# plt.rc('text', usetex = True)
-plt.rc('text.latex', preamble = r'\usepackage{amssymb, wasysym}')
 
 verbose = True
-
-# LOAD SPICE KERNELS
-if verbose: print('Loading kernels...')
-spice.load_standard_kernels()
+save_results = False
 
 # CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
 # The ephemeris model is irrelevant because the translational dynamics of Phobos will be propagated. But tudat complains if Phobos doesn't have one.
@@ -77,8 +69,9 @@ propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time, 
 tic = time()
 if verbose: print('Simulating dynamics...')
 simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
-save2txt(simulator.state_history, 'phobos-ephemerides-3500.txt')
-save2txt(simulator.dependent_variable_history, 'a1-dependent-variables-3500.txt')
+if save_results:
+    save2txt(simulator.state_history, 'phobos-ephemerides-3500.txt')
+    save2txt(simulator.dependent_variable_history, 'a1-dependent-variables-3500.txt')
 tac = time()
 print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
 

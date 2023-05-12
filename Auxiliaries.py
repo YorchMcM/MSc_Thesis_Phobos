@@ -1,31 +1,55 @@
+# NATIVE IMPORTS
 import sys
-import numpy as np
 from os import getcwd
-from Logistics import *
+import warnings
+
+import numpy as np
+from numpy import pi as PI
+TWOPI = 2*PI
 from numpy.fft import rfft, rfftfreq
 from numpy.polynomial.polynomial import polyfit
-import warnings
+
+from time import time
+from cycler import cycler
+
+from Logistics import *
 
 sys.path.insert(0, '/home/yorch/tudat-bundle/cmake-build-release/tudatpy')
 
-# These imports will go to both this files and all files importing this module
-# Some of these imports will not be used in the present file, but will be in others.
-from tudatpy.kernel import constants
-from tudatpy.kernel.interface import spice
-from tudatpy.kernel import numerical_simulation
-from tudatpy.kernel.numerical_simulation import environment_setup, propagation_setup
-from tudatpy.kernel.numerical_simulation import environment, propagation, estimation
-from tudatpy.util import result2array, compare_results
+# TUDAT IMPORTS
+
+# Domestic imports (i.e. only used in this file)
 from tudatpy.kernel.astro.frame_conversion import inertial_to_rsw_rotation_matrix
 from tudatpy.kernel.astro.element_conversion import rotation_matrix_to_quaternion_entries as mat2quat
 from tudatpy.kernel.astro.element_conversion import quaternion_entries_to_rotation_matrix as quat2mat
 from tudatpy.kernel.astro.element_conversion import cartesian_to_keplerian, true_to_mean_anomaly, semi_major_axis_to_mean_motion
-from tudatpy.plotting import trajectory_3d
 
+# Public imports (i.e. required by all other scripts importing this module but not necessarily used here)
+from tudatpy.kernel.interface import spice
+from tudatpy.kernel import constants, numerical_simulation
+from tudatpy.kernel.numerical_simulation import environment_setup, propagation_setup
+from tudatpy.util import result2array
+from tudatpy.plotting import trajectory_3d
+from tudatpy.io import save2txt
+
+import matplotlib.font_manager as fman
 from matplotlib import use
 use('TkAgg')
 import matplotlib.pyplot as plt
 
+for font in fman.findSystemFonts(r'/home/yorch/thesis/Roboto_Slab'):
+    fman.fontManager.addfont(font)
+
+plt.rc('font', family = 'Roboto Slab')
+plt.rc('axes', titlesize = 18)
+plt.rc('axes', labelsize = 16)
+plt.rc('legend', fontsize = 14)
+plt.rc('text.latex', preamble = r'\usepackage{amssymb, wasysym}')
+plt.rcParams['axes.prop_cycle'] = cycler('color', ['#0072BD', '#D95319', '#EDB120', '#7E2F8E',
+                                                   '#77AC30', '#4DBEEE', '#A2142F', '#7f7f7f', '#bcbd22', '#17becf'])
+plt.rcParams['lines.markersize'] = 6.0
+
+spice.load_standard_kernels()
 
 def rms(array: np.ndarray) -> float:
 
@@ -143,7 +167,7 @@ def get_normalization_constant(degree: int, order: int) -> float:
 def get_solar_system(ephemerides: environment_setup.ephemeris.EphemerisSettings,
                      field_type: str,
                      field_source: str,
-                     scaled_amplitude: float = 0.0) -> environment.SystemOfBodies:
+                     scaled_amplitude: float = 0.0) -> numerical_simulation.environment.SystemOfBodies:
 
     '''
     This function will create the "bodies" object, just so we don't have all this lines in all models. Phobos is to be
@@ -186,7 +210,7 @@ def get_solar_system(ephemerides: environment_setup.ephemeris.EphemerisSettings,
 
     # There are some properties that are not assigned to Phobos' body settings, but rather to the body object itself.
     # One is the rotation model (only used in model A1).
-    bodies.get('Phobos').rotation_model.libration_calculator = environment.DirectLongitudeLibrationCalculator(scaled_amplitude)
+    bodies.get('Phobos').rotation_model.libration_calculator = numerical_simulation.environment.DirectLongitudeLibrationCalculator(scaled_amplitude)
     # Another is the inertia tensor (useless in model A1).
     bodies.get('Phobos').inertia_tensor = inertia_tensor_from_spherical_harmonic_gravity_field(
         bodies.get('Phobos').gravity_field_model
@@ -195,7 +219,7 @@ def get_solar_system(ephemerides: environment_setup.ephemeris.EphemerisSettings,
     return bodies
 
 
-def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
+def get_model_a1_propagator_settings(bodies: numerical_simulation.environment.SystemOfBodies,
                                      simulation_time: float,
                                      initial_epoch: float = 0.0,
                                      dependent_variables: list[propagation_setup.dependent_variable.PropagationDependentVariables] = [])\
@@ -261,7 +285,7 @@ def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
     return propagator_settings
 
 
-def get_model_a2_propagator_settings(bodies: environment.SystemOfBodies,
+def get_model_a2_propagator_settings(bodies: numerical_simulation.environment.SystemOfBodies,
                                      simulation_time: float,
                                      initial_epoch: float,
                                      initial_state: np.ndarray,
@@ -331,7 +355,7 @@ def get_model_a2_propagator_settings(bodies: environment.SystemOfBodies,
     return propagator_settings
 
 
-def get_model_b_propagator_settings(bodies: environment.SystemOfBodies,
+def get_model_b_propagator_settings(bodies: numerical_simulation.environment.SystemOfBodies,
                                     simulation_time: float,
                                     initial_epoch: float,
                                     initial_state: np.ndarray,
@@ -414,7 +438,7 @@ def get_model_b_propagator_settings(bodies: environment.SystemOfBodies,
     return propagator_settings
 
 
-def get_fake_initial_state(bodies: environment.SystemOfBodies,
+def get_fake_initial_state(bodies: numerical_simulation.environment.SystemOfBodies,
                            initial_epoch: float,
                            omega: float) -> np.ndarray:
 
@@ -444,7 +468,7 @@ def get_gravitational_field(frame_name: str, field_type: str, source: str)\
     elif source == 'Le Maistre':
         phobos_gravitational_parameter = 1.06e16*constants.GRAVITATIONAL_CONSTANT
         phobos_reference_radius = 14e3
-    else: raise ValueError('(let_there_be_a_gravitational_field): Invalid source. Only "Scheeres" and "Le Maistre are '
+    else: raise ValueError('(get_gravitational_field): Invalid source. Only "Scheeres" and "Le Maistre are '
                            'allowed. You provided "' + source + '".')
 
     cosines_file = datadir + 'cosines ' + source + '.txt'
@@ -453,7 +477,7 @@ def get_gravitational_field(frame_name: str, field_type: str, source: str)\
     phobos_normalized_sine_coefficients = read_matrix_from_file(sines_file, [5, 5])
 
     if field_type not in ['QUAD', 'FULL']:
-        raise ValueError('(let_there_be_a_gravitational_field): Wrong field type. Only "FULL" and "QUAD" are supported. "'
+        raise ValueError('(get_gravitational_field): Wrong field type. Only "FULL" and "QUAD" are supported. "'
                          + field_type + '" was provided.')
 
     if field_type == 'QUAD':
@@ -477,7 +501,7 @@ def get_gravitational_field(frame_name: str, field_type: str, source: str)\
 
 
 def inertia_tensor_from_spherical_harmonic_gravity_field(
-        gravity_field: environment.SphericalHarmonicsGravityField) -> np.ndarray:
+        gravity_field: numerical_simulation.environment.SphericalHarmonicsGravityField) -> np.ndarray:
 
     '''
     This function is completely equivalent to the tudat-provided getInertiaTensor function defined in the file
@@ -751,7 +775,7 @@ def get_synodic_period(period1: float, period2: float) -> float:
     return 1.0/abs((1.0/period1)-(1.0/period2))
 
 
-def check_ephemeris_sufficiency(bodies: environment.SystemOfBodies, max_simulation_epoch: float) -> None:
+def check_ephemeris_sufficiency(bodies: numerical_simulation.environment.SystemOfBodies, max_simulation_epoch: float) -> None:
 
     available_states = bodies.get('Phobos').ephemeris.body_state_history
     max_ephemeris_epoch = list(available_states.keys())[-1]
@@ -837,7 +861,7 @@ def rotate_euler_angles(original_angles: np.ndarray, rotation_matrix: np.ndarray
 
 class MarsEquatorOfDate():
 
-    def __init__(self, bodies: environment.SystemOfBodies):
+    def __init__(self, bodies: numerical_simulation.environment.SystemOfBodies):
 
         self.alpha_0 = np.radians(317.269202)
         self.delta_0 = np.radians(54.432516)
@@ -870,18 +894,7 @@ class MarsEquatorOfDate():
         return rotate_euler_angles(euler_angles_j2000, self.mars_j2000_rotation)
 
 
-def get_true_initial_state(model: str, initial_epoch: float) -> np.ndarray:
-
-    if model == 'B': ephemeris_file = '/home/yorch/thesis/everything-works-results/model-b/states-d8192.txt'
-    if model == 'C': ephemeris_file = '/home/yorch/thesis/everything-works-results/model-c/states-d8192.txt'
-
-    state_history = read_vector_history_from_file(ephemeris_file)
-    initial_state = state_history[initial_epoch]
-
-    return initial_state
-
-
-def extract_estimation_output(estimation_output: estimation.EstimationOutput,
+def extract_estimation_output(estimation_output: numerical_simulation.estimation.EstimationOutput,
                               observation_times: list[float],
                               residual_type: str) -> tuple:
 
