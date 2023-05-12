@@ -15,7 +15,6 @@ The tweaked rotational motion in model A2 is of 2.28035245e-4 rad/s = 19.7022451
 period is of 7h 39min 13.57s.
 
 '''
-import os
 
 # IMPORTS
 import numpy as np
@@ -51,7 +50,7 @@ phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, l
 dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0,  64.0,   128.0, 256.0,   512.0,  1024.0,  2048.0, 4096.0,   8192.0])*3600.0)  # In seconds.
 # dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0,  64.0,   128.0, 256.0,   512.0,  1024.0,  2048.0, 4096.0,   8192.0])*3600.0)  # In seconds.
 
-if save_results: save_dir = os.getcwd() + '/everything-works-results/model-b/'
+if save_results: save_dir = getcwd() + '/everything-works-results/model-b/'
 
 # LOAD SPICE KERNELS
 if verbose: print('Loading kernels...')
@@ -92,7 +91,8 @@ if verbose: print('Simulating dynamics...')
 fake_initial_translational_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'J2000', 'NONE', initial_epoch)
 fake_initial_rotational_state = get_fake_initial_state(bodies, initial_epoch, phobos_mean_rotational_rate)
 fake_initial_state = np.concatenate((fake_initial_translational_state, fake_initial_rotational_state))
-fake_propagator_settings = get_model_b_propagator_settings(bodies, simulation_time, fake_initial_state, dependent_variables_to_save)
+fake_propagator_settings = get_model_b_propagator_settings(bodies, simulation_time, initial_epoch,
+                                                           fake_initial_state, dependent_variables_to_save)
 tic = time()
 print('Going into the depths of Tudat...')
 damping_results = numerical_simulation.propagation.get_zero_proper_mode_rotational_state(bodies,

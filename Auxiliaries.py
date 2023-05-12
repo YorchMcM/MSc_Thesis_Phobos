@@ -4,6 +4,7 @@ from os import getcwd
 from Logistics import *
 from numpy.fft import rfft, rfftfreq
 from numpy.polynomial.polynomial import polyfit
+import warnings
 
 sys.path.insert(0, '/home/yorch/tudat-bundle/cmake-build-release/tudatpy')
 
@@ -13,7 +14,7 @@ from tudatpy.kernel import constants
 from tudatpy.kernel.interface import spice
 from tudatpy.kernel import numerical_simulation
 from tudatpy.kernel.numerical_simulation import environment_setup, propagation_setup
-from tudatpy.kernel.numerical_simulation import environment, propagation
+from tudatpy.kernel.numerical_simulation import environment, propagation, estimation
 from tudatpy.util import result2array, compare_results
 from tudatpy.kernel.astro.frame_conversion import inertial_to_rsw_rotation_matrix
 from tudatpy.kernel.astro.element_conversion import rotation_matrix_to_quaternion_entries as mat2quat
@@ -24,6 +25,11 @@ from tudatpy.plotting import trajectory_3d
 from matplotlib import use
 use('TkAgg')
 import matplotlib.pyplot as plt
+
+
+def rms(array: np.ndarray) -> float:
+
+    return np.sqrt((array @ array) / len(array))
 
 
 def rotation_matrix_x(angle: float) -> np.ndarray:
@@ -172,9 +178,6 @@ def get_solar_system(ephemerides: environment_setup.ephemeris.EphemerisSettings,
     # Ephemeris and rotation models.
     body_settings.get('Phobos').rotation_model_settings = environment_setup.rotation_model.synchronous('Mars', 'J2000', 'Phobos_body_fixed')
     body_settings.get('Phobos').ephemeris_settings = ephemerides
-    if type(ephemerides) == environment_setup.ephemeris.TabulatedEphemerisSettings:
-        days, hours, minutes, seconds = get_epoch_elements_from_epoch(list(ephemerides.body_state_history.keys())[-1])
-        print('EPHEMERIS INFO: This ephemeris spans ' + str(days) + ' days, ' + str(hours) + ' hours, ' + str(minutes) + ' minutes, ' + str(seconds) + ' seconds.')
     # Gravity field.
     body_settings.get('Phobos').gravity_field_settings = get_gravitational_field('Phobos_body_fixed', field_type, field_source)
 
@@ -260,6 +263,7 @@ def get_model_a1_propagator_settings(bodies: environment.SystemOfBodies,
 
 def get_model_a2_propagator_settings(bodies: environment.SystemOfBodies,
                                      simulation_time: float,
+                                     initial_epoch: float,
                                      initial_state: np.ndarray,
                                      dependent_variables: list[propagation_setup.dependent_variable.PropagationDependentVariables] = [])\
         -> propagation_setup.propagator.TranslationalStatePropagatorSettings:
@@ -282,6 +286,9 @@ def get_model_a2_propagator_settings(bodies: environment.SystemOfBodies,
     :param dependent_variables: The list of dependent variables to save during propagation.
     :return: propagator_settings
     '''
+
+    if bodies.get('Phobos').ephemeris.interpolator.get_independent_values()[-1] < initial_epoch + simulation_time:
+        warnings.warn('(get_model_a2_propagator_settings): Simulation time extends beyond provided ephemeris.')
 
     bodies_to_propagate = ['Phobos']
 
@@ -308,7 +315,7 @@ def get_model_a2_propagator_settings(bodies: environment.SystemOfBodies,
                                                                                       np.inf, np.inf)
     # PROPAGATION SETTINGS
     # Initial conditions
-    initial_epoch = 13035.0  # This is (approximately) the first perisapsis passage since J2000
+    # initial_epoch = 13035.0  # This is (approximately) the first perisapsis passage since J2000
     # Termination condition
     termination_condition = propagation_setup.propagator.time_termination(initial_epoch + simulation_time, True)
     # The settings object
@@ -326,6 +333,7 @@ def get_model_a2_propagator_settings(bodies: environment.SystemOfBodies,
 
 def get_model_b_propagator_settings(bodies: environment.SystemOfBodies,
                                     simulation_time: float,
+                                    initial_epoch: float,
                                     initial_state: np.ndarray,
                                     dependent_variables: list[propagation_setup.dependent_variable.PropagationDependentVariables] = [])\
         -> propagation_setup.propagator.TranslationalStatePropagatorSettings:
@@ -371,7 +379,7 @@ def get_model_b_propagator_settings(bodies: environment.SystemOfBodies,
 
     # GENERAL PROPAGATION SETTINGS
     # Initial conditions
-    initial_epoch = 13035.0  # This is (aproximately) the first perisapsis passage since J2000
+    # initial_epoch = 13035.0  # This is (aproximately) the first perisapsis passage since J2000
     # Termination condition
     termination_condition = propagation_setup.propagator.time_termination(simulation_time)
 
@@ -861,3 +869,95 @@ class MarsEquatorOfDate():
 
         return rotate_euler_angles(euler_angles_j2000, self.mars_j2000_rotation)
 
+
+def get_true_initial_state(model: str, initial_epoch: float) -> np.ndarray:
+
+    if model == 'B': ephemeris_file = '/home/yorch/thesis/everything-works-results/model-b/states-d8192.txt'
+    if model == 'C': ephemeris_file = '/home/yorch/thesis/everything-works-results/model-c/states-d8192.txt'
+
+    state_history = read_vector_history_from_file(ephemeris_file)
+    initial_state = state_history[initial_epoch]
+
+    return initial_state
+
+
+def extract_estimation_output(estimation_output: estimation.EstimationOutput,
+                              observation_times: list[float],
+                              residual_type: str) -> tuple:
+
+    if residual_type not in ['position', 'orientation']:
+        raise ValueError('(): Invalid residual type. Only "position" and "orientation" are allowed. Residual type provided is "' + residual_type + '".')
+
+    number_of_iterations = estimation_output.residual_history.shape[1]
+    iteration_array = list(range(number_of_iterations + 1))
+    if residual_type == 'position':
+        residual_history = extract_position_residuals(estimation_output.residual_history,
+                                                      observation_times,
+                                                      number_of_iterations)
+        residual_rms_evolution = get_position_rms_evolution(residual_history)
+    if residual_type == 'orientation':
+        residual_history = extract_orientation_residuals(estimation_output.residual_history,
+                                                         observation_times,
+                                                         number_of_iterations)
+        residual_rms_evolution = get_orientation_rms_evolution(residual_history)
+    parameter_evolution = dict(zip(iteration_array, estimation_output.parameter_history.T))
+
+
+
+
+    return residual_history, parameter_evolution, residual_rms_evolution
+
+
+def extract_position_residuals(residual_history: np.ndarray, observation_times: list[float], number_of_iterations: float) -> dict:
+
+    '''
+
+    The new structure is going to be as follows:
+
+    first_epoch     : x_iter1, y_iter1, z_iter1, x_iter2, y_iter2, z_iter2, ... , x_iterN, y_iterN, z_iterN
+    second_epoch    : x_iter1, y_iter1, z_iter1, x_iter2, y_iter2, z_iter2, ... , x_iterN, y_iterN, z_iterN
+        ...
+        ...
+        ...
+    last_epoch      : x_iter1, y_iter1, z_iter1, x_iter2, y_iter2, z_iter2, ... , x_iterN, y_iterN, z_iterN
+
+
+    :param residual_history:
+    :param observation_times:
+    :param number_of_iterations:
+    :return:
+    '''
+
+    new_residual_history = dict.fromkeys(observation_times)
+    for idx, epoch in enumerate(observation_times):
+        current_array = np.zeros(3 * number_of_iterations)
+        for k in range(number_of_iterations):
+            current_array[3*k:3*(k+1)] = residual_history[3*idx:3*(idx+1),k]
+        new_residual_history[epoch] = current_array
+
+    return new_residual_history
+
+
+def extract_orientation_residuals(residual_history: np.ndarray, observation_times: np.ndarray, number_of_iterations: float) -> dict:
+
+    return
+
+
+def get_position_rms_evolution(residual_history: dict) -> dict:
+
+    residual_array = result2array(residual_history)
+    number_of_iterations = int((residual_array.shape[1] - 1) / 3)
+    iteration_list = list(range(1, number_of_iterations + 1))
+    rms_evolution = dict.fromkeys(iteration_list)
+
+    for idx in iteration_list:
+        rms_evolution[idx] = np.zeros(3)
+        for k in range(3):
+            rms_evolution[idx][k] = rms(residual_array[:,3*(idx-1)+k+1])
+
+    return rms_evolution
+
+
+def get_orientation_rms_evolution(residual_history: dict) -> dict:
+
+    return

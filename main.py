@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 from Auxiliaries import *
 from numpy import pi as PI
@@ -10,6 +11,11 @@ use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fman
 TWOPI = 2*PI
+
+# sys.path.insert(0, '/home/yorch/tudat-bundle/cmake-build-release/tudatpy')
+
+from tudatpy.kernel.numerical_simulation import environment_setup
+from tudatpy.kernel.interface import spice
 
 # The following lines set the defaults for plot fonts and font sizes.
 for font in fman.findSystemFonts(r'/home/yorch/thesis/Roboto_Slab'):
@@ -24,9 +30,22 @@ plt.rcParams['axes.prop_cycle'] = cycler('color', ['#0072BD', '#D95319', '#EDB12
                                                    '#77AC30', '#4DBEEE', '#A2142F', '#7f7f7f', '#bcbd22', '#17becf'])
 plt.rcParams['lines.markersize'] = 6.0
 
+spice.load_standard_kernels()
+
 average_mean_motion = myconstants.average_mean_motion
 normal_mode = myconstants.normal_mode
 phobos_mean_rotational_rate = myconstants.phobos_mean_rotational_rate
+
+# CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
+trajectory_file = '/home/yorch/thesis/everything-works-results/model-b/states-d8192.txt'
+imposed_trajectory = extract_elements_from_history(read_vector_history_from_file(trajectory_file), [0, 1, 2, 3, 4, 5])
+phobos_ephemerides = environment_setup.ephemeris.tabulated(imposed_trajectory, 'Mars', 'J2000')
+gravity_field_type = 'QUAD'
+gravity_field_source = 'Le Maistre'
+libration_amplitude = 1.1  # In degrees
+ecc_scale = 0.015034167790105173
+scaled_amplitude = np.radians(libration_amplitude) / ecc_scale
+bodies = get_solar_system(phobos_ephemerides, gravity_field_type, gravity_field_source, scaled_amplitude)
 
 # dissipation_times = [4.0, 8.0, 16.0, 32.0,  64.0,   128.0, 256.0,   512.0,  1024.0,  2048.0, 4096.0, 8192.0]
 # first_dissipation_index = 4
@@ -45,7 +64,7 @@ phobos_mean_rotational_rate = myconstants.phobos_mean_rotational_rate
 #     dissipation_slash = dissipation_times[first_dissipation_index:last_dissipation_index]
 #     array_size = last_dissipation_index - first_dissipation_index
 
-read_dir = os.getcwd() + '/everything-works-results/'
+read_dir = os.getcwd() + '/estimation-ab/alpha/'
 # # freq_undamped, amp_undamped = get_fourier_elements_from_history(extract_elements_from_history(
 # #     read_vector_history_from_file(read_dir + 'dependents-undamped.txt'), 5))
 #
@@ -394,14 +413,14 @@ read_dir = os.getcwd() + '/everything-works-results/'
 #     plt.legend()
 #     plt.grid()
 
-mars_mu = myconstants.mars_mu
-dependents_undamped_a2 = read_vector_history_from_file(read_dir + 'model-a2/dependents-undamped.txt')
-dependents_damped_a2 = read_vector_history_from_file(read_dir + 'model-a2/dependents-d8192-full.txt')
-dependents_undamped_b = read_vector_history_from_file(read_dir + 'model-b/dependents-undamped.txt')
-dependents_damped_b = read_vector_history_from_file(read_dir + 'model-b/dependents-d8192-full.txt')
-epochs_array = np.array(list(dependents_damped_b.keys()))
-normal_mode = myconstants.normal_mode
-clean_signal = [TWOPI, 1]
+# mars_mu = myconstants.mars_mu
+# dependents_undamped_a2 = read_vector_history_from_file(read_dir + 'model-a2/dependents-undamped.txt')
+# dependents_damped_a2 = read_vector_history_from_file(read_dir + 'model-a2/dependents-d8192-full.txt')
+# dependents_undamped_b = read_vector_history_from_file(read_dir + 'model-b/dependents-undamped.txt')
+# dependents_damped_b = read_vector_history_from_file(read_dir + 'model-b/dependents-d8192-full.txt')
+# epochs_array = np.array(list(dependents_damped_b.keys()))
+# normal_mode = myconstants.normal_mode
+# clean_signal = [TWOPI, 1]
 
 # MODEL A2
 # euler_history_undamped_a2 = bring_history_inside_bounds(extract_elements_from_history(dependents_undamped_a2, [0, 1, 2]), 0.0, TWOPI)
@@ -416,81 +435,161 @@ clean_signal = [TWOPI, 1]
 # phi_freq_a2, phi_amp_a2 = get_fourier_elements_from_history(extract_elements_from_history(euler_history_a2, 2), clean_signal)
 # euler_history_a2 = result2array(euler_history_a2)
 
-# MODEL B
-euler_history_undamped_b = bring_history_inside_bounds(extract_elements_from_history(dependents_undamped_b, [0, 1, 2]), 0.0, TWOPI)
-psi_freq_undamped_b, psi_amp_undamped_b = get_fourier_elements_from_history(extract_elements_from_history(euler_history_undamped_b, 0), clean_signal)
-theta_freq_undamped_b, theta_amp_undamped_b = get_fourier_elements_from_history(extract_elements_from_history(euler_history_undamped_b, 1), clean_signal)
-phi_freq_undamped_b, phi_amp_undamped_b = get_fourier_elements_from_history(extract_elements_from_history(euler_history_undamped_b, 2), clean_signal)
-euler_history_undamped_b = result2array(euler_history_undamped_b)
+# # MODEL B
+# euler_history_undamped_b = bring_history_inside_bounds(extract_elements_from_history(dependents_undamped_b, [0, 1, 2]), 0.0, TWOPI)
+# psi_freq_undamped_b, psi_amp_undamped_b = get_fourier_elements_from_history(extract_elements_from_history(euler_history_undamped_b, 0), clean_signal)
+# theta_freq_undamped_b, theta_amp_undamped_b = get_fourier_elements_from_history(extract_elements_from_history(euler_history_undamped_b, 1), clean_signal)
+# phi_freq_undamped_b, phi_amp_undamped_b = get_fourier_elements_from_history(extract_elements_from_history(euler_history_undamped_b, 2), clean_signal)
+# euler_history_undamped_b = result2array(euler_history_undamped_b)
+#
+# euler_history_b = bring_history_inside_bounds(extract_elements_from_history(dependents_damped_b, [0, 1, 2]), 0.0, TWOPI)
+# psi_freq_b, psi_amp_b = get_fourier_elements_from_history(extract_elements_from_history(euler_history_b, 0), clean_signal)
+# theta_freq_b, theta_amp_b = get_fourier_elements_from_history(extract_elements_from_history(euler_history_b, 1), clean_signal)
+# phi_freq_b, phi_amp_b = get_fourier_elements_from_history(extract_elements_from_history(euler_history_b, 2), clean_signal)
+# euler_history_b = result2array(euler_history_b)
+#
+# # UNDAMPED EULER ANGLES (ONLY PSI AND THETA)
+# fig, ax1 = plt.subplots()
+# ax2 = ax1.twinx()
+# ax1.plot(epochs_array / 86400.0, euler_history_undamped_b[:, 1] * 360.0 / TWOPI, label=r'$\psi$', c='#0072BD')
+# ax2.plot(epochs_array / 86400.0, euler_history_undamped_b[:, 2] * 360.0 / TWOPI, label=r'$\theta$', c='#D95319')
+# ax1.set_ylabel(r'$\psi$ [º]')
+# ax2.set_ylabel(r'$\theta$ [º]')
+# ax1.tick_params(axis='y', colors='#0072BD')
+# ax2.tick_params(axis='y', colors='#D95319')
+# ax1.yaxis.label.set_color('#0072BD')
+# ax2.yaxis.label.set_color('#D95319')
+# ax2.spines['left'].set_color('#0072BD')
+# ax2.spines['right'].set_color('#D95319')
+# ax1.set_xlabel('Time [days since J2000]')
+# ax1.grid()
+# ax1.set_title('Undamped Euler angles')
+#
+# # DAMPED EULER ANGLES (ONLY PSI AND THETA)
+# fig, ax1 = plt.subplots()
+# ax2 = ax1.twinx()
+# ax1.plot(epochs_array / 86400.0, euler_history_b[:, 1] * 360.0 / TWOPI, label=r'$\psi$', c='#0072BD')
+# ax2.plot(epochs_array / 86400.0, euler_history_b[:, 2] * 360.0 / TWOPI, label=r'$\theta$', c='#D95319')
+# ax1.set_ylabel(r'$\psi$ [º]')
+# ax2.set_ylabel(r'$\theta$ [º]')
+# ax1.tick_params(axis='y', colors='#0072BD')
+# ax2.tick_params(axis='y', colors='#D95319')
+# ax1.yaxis.label.set_color('#0072BD')
+# ax2.yaxis.label.set_color('#D95319')
+# ax2.spines['left'].set_color('#0072BD')
+# ax2.spines['right'].set_color('#D95319')
+# ax1.set_xlabel('Time [days since J2000]')
+# ax1.grid()
+# ax1.set_title('Damped Euler angles')
+#
+# # FOURIER TRANSFORM OF ALL THREE UNDAPMPED ANGLES
+# plt.figure()
+# plt.loglog(psi_freq_undamped_b * 86400.0, psi_amp_undamped_b * 360 / TWOPI, label=r'$\psi$', marker='.')
+# plt.loglog(theta_freq_undamped_b * 86400.0, theta_amp_undamped_b * 360 / TWOPI, label=r'$\theta$', marker='.')
+# plt.loglog(phi_freq_undamped_b * 86400.0, phi_amp_undamped_b * 360 / TWOPI, label=r'$\phi$', marker='.', markersize = 3.0)
+# plt.axline((phobos_mean_rotational_rate * 86400.0, 0), (phobos_mean_rotational_rate * 86400.0, 1), ls='dashed', c='r', label='Phobos\' mean motion (and integer multiples)')
+# plt.axline((normal_mode * 86400.0, 0), (normal_mode * 86400.0, 1), ls='dashed', c='k', label='Longitudinal normal mode')
+# plt.axline((2 * average_mean_motion * 86400.0, 0), (2 * average_mean_motion * 86400.0, 1), ls='dashed', c='r')
+# plt.axline((3 * average_mean_motion * 86400.0, 0), (3 * average_mean_motion * 86400.0, 1), ls='dashed', c='r')
+# plt.title(r'Undamped frequency content')
+# plt.xlabel(r'$\omega$ [rad/day]')
+# plt.ylabel(r'$A [º]$')
+# plt.grid()
+# plt.legend()
+#
+# # FOURIER TRANSFORM OF ALL THREE DAMPED ANGLES
+# plt.figure()
+# plt.loglog(psi_freq_b * 86400.0, psi_amp_b * 360 / TWOPI, label=r'$\psi$', marker='.')
+# plt.loglog(theta_freq_b * 86400.0, theta_amp_b * 360 / TWOPI, label=r'$\theta$', marker='.')
+# plt.loglog(phi_freq_b * 86400.0, phi_amp_b * 360 / TWOPI, label=r'$\phi$', marker='.', markersize = 3.0)
+# plt.axline((phobos_mean_rotational_rate * 86400.0, 0), (phobos_mean_rotational_rate * 86400.0, 1), ls='dashed', c='r', label='Phobos\' mean motion (and integer multiples)')
+# plt.axline((normal_mode * 86400.0, 0), (normal_mode * 86400.0, 1), ls='dashed', c='k', label='Longitudinal normal mode')
+# plt.axline((2 * average_mean_motion * 86400.0, 0), (2 * average_mean_motion * 86400.0, 1), ls='dashed', c='r')
+# plt.axline((3 * average_mean_motion * 86400.0, 0), (3 * average_mean_motion * 86400.0, 1), ls='dashed', c='r')
+# plt.title(r'Damped frequency content')
+# plt.xlabel(r'$\omega$ [rad/day]')
+# plt.ylabel(r'$A [º]$')
+# plt.grid()
+# plt.legend()
 
-euler_history_b = bring_history_inside_bounds(extract_elements_from_history(dependents_damped_b, [0, 1, 2]), 0.0, TWOPI)
-psi_freq_b, psi_amp_b = get_fourier_elements_from_history(extract_elements_from_history(euler_history_b, 0), clean_signal)
-theta_freq_b, theta_amp_b = get_fourier_elements_from_history(extract_elements_from_history(euler_history_b, 1), clean_signal)
-phi_freq_b, phi_amp_b = get_fourier_elements_from_history(extract_elements_from_history(euler_history_b, 2), clean_signal)
-euler_history_b = result2array(euler_history_b)
+###########################################################################################################################
 
-# UNDAMPED EULER ANGLES (ONLY PSI AND THETA)
-fig, ax1 = plt.subplots()
-ax2 = ax1.twinx()
-ax1.plot(epochs_array / 86400.0, euler_history_undamped_b[:, 1] * 360.0 / TWOPI, label=r'$\psi$', c='#0072BD')
-ax2.plot(epochs_array / 86400.0, euler_history_undamped_b[:, 2] * 360.0 / TWOPI, label=r'$\theta$', c='#D95319')
-ax1.set_ylabel(r'$\psi$ [º]')
-ax2.set_ylabel(r'$\theta$ [º]')
-ax1.tick_params(axis='y', colors='#0072BD')
-ax2.tick_params(axis='y', colors='#D95319')
-ax1.yaxis.label.set_color('#0072BD')
-ax2.yaxis.label.set_color('#D95319')
-ax2.spines['left'].set_color('#0072BD')
-ax2.spines['right'].set_color('#D95319')
-ax1.set_xlabel('Time [days since J2000]')
-ax1.grid()
-ax1.set_title('Undamped Euler angles')
+initial_estimation_epoch = 1.0 * constants.JULIAN_YEAR
+true_initial_state = bodies.get('Phobos').ephemeris.interpolator.interpolate(initial_estimation_epoch)
+residual_history = read_vector_history_from_file(read_dir + 'residual-history.txt')
+parameter_evolution = read_vector_history_from_file(read_dir + 'parameter-evolution.txt')
+residual_rms_evolution = read_vector_history_from_file(read_dir + 'rms-evolution.txt')
 
-# DAMPED EULER ANGLES (ONLY PSI AND THETA)
-fig, ax1 = plt.subplots()
-ax2 = ax1.twinx()
-ax1.plot(epochs_array / 86400.0, euler_history_b[:, 1] * 360.0 / TWOPI, label=r'$\psi$', c='#0072BD')
-ax2.plot(epochs_array / 86400.0, euler_history_b[:, 2] * 360.0 / TWOPI, label=r'$\theta$', c='#D95319')
-ax1.set_ylabel(r'$\psi$ [º]')
-ax2.set_ylabel(r'$\theta$ [º]')
-ax1.tick_params(axis='y', colors='#0072BD')
-ax2.tick_params(axis='y', colors='#D95319')
-ax1.yaxis.label.set_color('#0072BD')
-ax2.yaxis.label.set_color('#D95319')
-ax2.spines['left'].set_color('#0072BD')
-ax2.spines['right'].set_color('#D95319')
-ax1.set_xlabel('Time [days since J2000]')
-ax1.grid()
-ax1.set_title('Damped Euler angles')
+number_of_iterations = len(list(parameter_evolution.keys()))
 
-# FOURIER TRANSFORM OF ALL THREE UNDAPMPED ANGLES
+residual_history_array = result2array(residual_history)
+parameter_evolution_array = result2array(parameter_evolution)
+rms_array = result2array(residual_rms_evolution)
+
+number_of_iterations = int(parameter_evolution_array.shape[0] - 1)
+for k in range(number_of_iterations):
+    plt.figure()
+    plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, residual_history_array[:,3*k+1] / 1000.0, label = 'x')
+    plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, residual_history_array[:,3*k+2] / 1000.0, label = 'y')
+    plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, residual_history_array[:,3*k+3] / 1000.0, label = 'z')
+    plt.grid()
+    plt.xlabel('Time since estimation start [days]')
+    plt.ylabel('Position residuals [km]')
+    plt.legend()
+    plt.title('Residual history (iteration ' + str(k+1) + ')')
+
 plt.figure()
-plt.loglog(psi_freq_undamped_b * 86400.0, psi_amp_undamped_b * 360 / TWOPI, label=r'$\psi$', marker='.')
-plt.loglog(theta_freq_undamped_b * 86400.0, theta_amp_undamped_b * 360 / TWOPI, label=r'$\theta$', marker='.')
-plt.loglog(phi_freq_undamped_b * 86400.0, phi_amp_undamped_b * 360 / TWOPI, label=r'$\phi$', marker='.', markersize = 3.0)
-plt.axline((phobos_mean_rotational_rate * 86400.0, 0), (phobos_mean_rotational_rate * 86400.0, 1), ls='dashed', c='r', label='Phobos\' mean motion (and integer multiples)')
-plt.axline((normal_mode * 86400.0, 0), (normal_mode * 86400.0, 1), ls='dashed', c='k', label='Longitudinal normal mode')
-plt.axline((2 * average_mean_motion * 86400.0, 0), (2 * average_mean_motion * 86400.0, 1), ls='dashed', c='r')
-plt.axline((3 * average_mean_motion * 86400.0, 0), (3 * average_mean_motion * 86400.0, 1), ls='dashed', c='r')
-plt.title(r'Undamped frequency content')
-plt.xlabel(r'$\omega$ [rad/day]')
-plt.ylabel(r'$A [º]$')
+plt.plot(rms_array[:,0], rms_array[:,1] / 1000.0, label = 'x', marker = '.')
+plt.plot(rms_array[:,0], rms_array[:,2] / 1000.0, label = 'y', marker = '.')
+plt.plot(rms_array[:,0], rms_array[:,3] / 1000.0, label = 'z', marker = '.')
 plt.grid()
+plt.xlabel('Iteration number')
+plt.ylabel('Residual rms [km]')
 plt.legend()
+plt.title('Residual root mean square')
 
-# FOURIER TRANSFORM OF ALL THREE DAMPED ANGLES
 plt.figure()
-plt.loglog(psi_freq_b * 86400.0, psi_amp_b * 360 / TWOPI, label=r'$\psi$', marker='.')
-plt.loglog(theta_freq_b * 86400.0, theta_amp_b * 360 / TWOPI, label=r'$\theta$', marker='.')
-plt.loglog(phi_freq_b * 86400.0, phi_amp_b * 360 / TWOPI, label=r'$\phi$', marker='.', markersize = 3.0)
-plt.axline((phobos_mean_rotational_rate * 86400.0, 0), (phobos_mean_rotational_rate * 86400.0, 1), ls='dashed', c='r', label='Phobos\' mean motion (and integer multiples)')
-plt.axline((normal_mode * 86400.0, 0), (normal_mode * 86400.0, 1), ls='dashed', c='k', label='Longitudinal normal mode')
-plt.axline((2 * average_mean_motion * 86400.0, 0), (2 * average_mean_motion * 86400.0, 1), ls='dashed', c='r')
-plt.axline((3 * average_mean_motion * 86400.0, 0), (3 * average_mean_motion * 86400.0, 1), ls='dashed', c='r')
-plt.title(r'Damped frequency content')
-plt.xlabel(r'$\omega$ [rad/day]')
-plt.ylabel(r'$A [º]$')
+plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,1] / 1000.0, label = r'$x_o$', marker = '.')
+plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,2] / 1000.0, label = r'$y_o$', marker = '.')
+plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,3] / 1000.0, label = r'$z_o$', marker = '.')
+plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,4], label = r'$v_{x,o}$', marker = '.')
+plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,5], label = r'$v_{y,o}$', marker = '.')
+plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,6], label = r'$v_{z,o}$', marker = '.')
 plt.grid()
+plt.xlabel('Iteration number')
+plt.ylabel('Parameter value [km | m/s]')
 plt.legend()
+plt.title('Parameter history')
+
+plt.figure()
+plt.plot(parameter_evolution_array[:,0], (parameter_evolution_array[:,1] - true_initial_state[0]) / 1000.0, label = r'$x_o$', marker = '.')
+plt.plot(parameter_evolution_array[:,0], (parameter_evolution_array[:,2] - true_initial_state[1]) / 1000.0, label = r'$y_o$', marker = '.')
+plt.plot(parameter_evolution_array[:,0], (parameter_evolution_array[:,3] - true_initial_state[2]) / 1000.0, label = r'$z_o$', marker = '.')
+plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,4] - true_initial_state[3], label = r'$v_{x,o}$', marker = '.')
+plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,5] - true_initial_state[4], label = r'$v_{y,o}$', marker = '.')
+plt.plot(parameter_evolution_array[:,0], parameter_evolution_array[:,6] - true_initial_state[5], label = r'$v_{z,o}$', marker = '.')
+plt.grid()
+plt.xlabel('Iteration number')
+plt.ylabel('Parameter difference from truth [km | m/s]')
+plt.legend()
+plt.title('Parameter history')
+
+parameter_changes = np.zeros([number_of_iterations, 6])
+for k in range(number_of_iterations):
+    parameter_changes[k,:] = parameter_evolution[k+1] - parameter_evolution[k]
+
+plt.figure()
+plt.plot(parameter_evolution_array[1:,0], abs(parameter_changes[:,0]) / 1000.0, label = r'$x_o$', marker = '.')
+plt.plot(parameter_evolution_array[1:,0], abs(parameter_changes[:,1]) / 1000.0, label = r'$y_o$', marker = '.')
+plt.plot(parameter_evolution_array[1:,0], abs(parameter_changes[:,2]) / 1000.0, label = r'$z_o$', marker = '.')
+plt.plot(parameter_evolution_array[1:,0], abs(parameter_changes[:,3]), label = r'$v_{x,o}$', marker = '.')
+plt.plot(parameter_evolution_array[1:,0], abs(parameter_changes[:,4]), label = r'$v_{y,o}$', marker = '.')
+plt.plot(parameter_evolution_array[1:,0], abs(parameter_changes[:,5]), label = r'$v_{z,o}$', marker = '.')
+plt.yscale('log')
+plt.grid()
+plt.xlabel('Iteration number')
+plt.ylabel('Parameter change [km | m/s]')
+plt.legend()
+plt.title('Parameter change between pre- and post-fit')
 
 print('PROGRAM COMPLETED SUCCESFULLY')
