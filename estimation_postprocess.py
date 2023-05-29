@@ -3,21 +3,18 @@ from Auxiliaries import *
 read_dir = getcwd() + '/estimation-ab/alpha/'
 
 # CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
-trajectory_file = '/home/yorch/thesis/everything-works-results/model-b/states-d8192.txt'
-imposed_trajectory = extract_elements_from_history(read_vector_history_from_file(trajectory_file), [0, 1, 2, 3, 4, 5])
-phobos_ephemerides = environment_setup.ephemeris.tabulated(imposed_trajectory, 'Mars', 'J2000')
-gravity_field_type = 'QUAD'
-gravity_field_source = 'Le Maistre'
+# trajectory_file = '/home/yorch/thesis/everything-works-results/model-b/states-d8192.txt'
+phobos_ephemerides = get_ephemeris_from_file('/home/yorch/thesis/phobos-ephemerides-3500.txt')
 libration_amplitude = 1.1  # In degrees
 ecc_scale = 0.015034167790105173
 scaled_amplitude = np.radians(libration_amplitude) / ecc_scale
-bodies = get_solar_system(phobos_ephemerides, gravity_field_type, gravity_field_source, scaled_amplitude)
+bodies = get_solar_system(phobos_ephemerides, scaled_amplitude)
 
 initial_estimation_epoch = 1.0 * constants.JULIAN_YEAR
 true_initial_state = bodies.get('Phobos').ephemeris.interpolator.interpolate(initial_estimation_epoch)
-residual_history = read_vector_history_from_file(read_dir + 'residual-history.txt')
-parameter_evolution = read_vector_history_from_file(read_dir + 'parameter-evolution.txt')
-residual_rms_evolution = read_vector_history_from_file(read_dir + 'rms-evolution.txt')
+residual_history = read_vector_history_from_file(read_dir + 'residual-history-a1a1-test-far.txt')
+parameter_evolution = read_vector_history_from_file(read_dir + 'parameter-evolution-a1a1-test-far.txt')
+residual_rms_evolution = read_vector_history_from_file(read_dir + 'rms-evolution-a1a1-test-far.txt')
 
 number_of_iterations = len(list(parameter_evolution.keys()))
 
@@ -91,4 +88,4 @@ plt.ylabel('Parameter change [km | m/s]')
 plt.legend()
 plt.title('Parameter change between pre- and post-fit')
 
-print('PROGRAM COMPLETED SUCCESFULLY')
+print('PROGRAM COMPLETED SUCCESSFULLY')

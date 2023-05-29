@@ -33,17 +33,29 @@ from Auxiliaries import *
 
 verbose = True
 save_results = False
+run_is_for_estimation_check = True
+
+if run_is_for_estimation_check:
+    phobos_ephemerides = get_ephemeris_from_file('/home/yorch/thesis/phobos-ephemerides-3500.txt')
+    simulation_time = 3.0 * constants.JULIAN_YEAR
+    initial_epoch = 1.0 * constants.JULIAN_YEAR
+    initial_state = read_vector_history_from_file(getcwd() + '/estimation-ab/alpha/parameter-evolution-a1a1-test-far.txt')[0]
+else:
+    phobos_ephemerides = environment_setup.ephemeris.direct_spice('Mars', 'J2000')
+    simulation_time = 3500.0 * constants.JULIAN_DAY
+    initial_epoch = 0.0
+    initial_state = None
+
 
 # CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
 # The ephemeris model is irrelevant because the translational dynamics of Phobos will be propagated. But tudat complains if Phobos doesn't have one.
 if verbose: print('Creating universe...')
-phobos_ephemerides = environment_setup.ephemeris.direct_spice('Mars', 'J2000')
-gravity_field_type = 'QUAD'
-gravity_field_source = 'Le Maistre'
+if run_is_for_estimation_check: phobos_ephemerides = get_ephemeris_from_file('/home/yorch/thesis/phobos-ephemerides-3500.txt')
+else: phobos_ephemerides = environment_setup.ephemeris.direct_spice('Mars', 'J2000')
 libration_amplitude = 1.1  # In degrees
 ecc_scale = 0.015034167790105173
 scaled_amplitude = np.radians(libration_amplitude) / ecc_scale
-bodies = get_solar_system(phobos_ephemerides, gravity_field_type, gravity_field_source, scaled_amplitude)
+bodies = get_solar_system(phobos_ephemerides, scaled_amplitude)
 
 # DEFINE PROPAGATION
 if verbose: print('Setting up propagation...')
@@ -63,7 +75,7 @@ dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to
                                 # acceleration_norm_from_body_on_phobos('Saturn')  # 25
                                 ]
 initial_epoch = 0.0
-propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time, initial_epoch, dependent_variables_to_save)
+propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time, initial_epoch, initial_state, dependent_variables_to_save)
 
 # SIMULATE DYNAMICS
 tic = time()

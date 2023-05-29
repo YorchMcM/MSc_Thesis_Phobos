@@ -55,9 +55,7 @@ if verbose: print('Creating universe...')
 trajectory_file = 'phobos-ephemerides-3500.txt'
 imposed_trajectory = read_vector_history_from_file(trajectory_file)
 phobos_ephemerides = environment_setup.ephemeris.tabulated(imposed_trajectory, 'Mars', 'J2000')
-gravity_field_type = 'QUAD'
-gravity_field_source = 'Le Maistre'
-bodies = get_solar_system(phobos_ephemerides, gravity_field_type, gravity_field_source)
+bodies = get_solar_system(phobos_ephemerides)
 
 # DEFINE PROPAGATION
 if verbose: print('Setting up propagation...')

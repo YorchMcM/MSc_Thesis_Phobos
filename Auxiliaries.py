@@ -134,25 +134,25 @@ def mean_motion_history_from_keplerian_history(keplerian_history: dict,
     return mean_motion_history
 
 
-def mean_anomaly_history_from_keplerian_history(keplerian_history: dict) -> dict:
+# def mean_anomaly_history_from_keplerian_history(keplerian_history: dict) -> dict:
+#
+#     epochs_list = list(keplerian_history.keys())
+#     mean_anomaly_history = dict.fromkeys(epochs_list)
+#     for key in epochs_list:
+#         eccentricity = keplerian_history[key][1]
+#         true_anomaly = keplerian_history[key][-1]
+#         mean_anomaly_history[key] = true_to_mean_anomaly(eccentricity, true_anomaly)
+#
+#     return mean_anomaly_history
 
-    epochs_list = list(keplerian_history.keys())
-    mean_anomaly_history = dict.fromkeys(epochs_list)
-    for key in epochs_list:
-        eccentricity = keplerian_history[key][1]
-        true_anomaly = keplerian_history[key][-1]
-        mean_anomaly_history[key] = true_to_mean_anomaly(eccentricity, true_anomaly)
 
-    return mean_anomaly_history
-
-
-def mean_anomaly_history_from_cartesian_history(cartesian_history: dict,
-                                                gravitational_parameter: float) -> dict:
-
-    keplerian_history = cartesian_to_keplerian_history(cartesian_history, gravitational_parameter)
-    mean_anomaly_history = mean_anomaly_history_from_keplerian_history(keplerian_history)
-
-    return mean_anomaly_history
+# def mean_anomaly_history_from_cartesian_history(cartesian_history: dict,
+#                                                 gravitational_parameter: float) -> dict:
+#
+#     keplerian_history = cartesian_to_keplerian_history(cartesian_history, gravitational_parameter)
+#     mean_anomaly_history = mean_anomaly_history_from_keplerian_history(keplerian_history)
+#
+#     return mean_anomaly_history
 
 
 def get_normalization_constant(degree: int, order: int) -> float:
@@ -164,10 +164,19 @@ def get_normalization_constant(degree: int, order: int) -> float:
     return N
 
 
+def get_ephemeris_from_file(filename: str) -> environment_setup.ephemeris.EphemerisSettings:
+
+    trajectory = read_vector_history_from_file(filename)
+    imposed_trajectory = extract_elements_from_history(trajectory, [0, 1, 2, 3, 4, 5])
+    phobos_ephemerides = environment_setup.ephemeris.tabulated(imposed_trajectory, 'Mars', 'J2000')
+
+    return phobos_ephemerides
+
+
 def get_solar_system(ephemerides: environment_setup.ephemeris.EphemerisSettings,
-                     field_type: str,
-                     field_source: str,
-                     scaled_amplitude: float = 0.0) -> numerical_simulation.environment.SystemOfBodies:
+                     scaled_amplitude: float = 0.0,
+                     field_type: str = 'QUAD',
+                     field_source: str = 'Le Maistre') -> numerical_simulation.environment.SystemOfBodies:
 
     '''
     This function will create the "bodies" object, just so we don't have all this lines in all models. Phobos is to be
@@ -222,6 +231,7 @@ def get_solar_system(ephemerides: environment_setup.ephemeris.EphemerisSettings,
 def get_model_a1_propagator_settings(bodies: numerical_simulation.environment.SystemOfBodies,
                                      simulation_time: float,
                                      initial_epoch: float = 0.0,
+                                     initial_state: np.ndarray = None,
                                      dependent_variables: list[propagation_setup.dependent_variable.PropagationDependentVariables] = [])\
         -> propagation_setup.propagator.TranslationalStatePropagatorSettings:
 
@@ -260,7 +270,7 @@ def get_model_a1_propagator_settings(bodies: numerical_simulation.environment.Sy
     acceleration_settings = {'Phobos': acceleration_settings_on_phobos}
     acceleration_model = propagation_setup.create_acceleration_models(bodies, acceleration_settings, bodies_to_propagate, central_bodies)
     # INTEGRATOR
-    time_step = 450.0  # These are 300s = 5min / 450s = 7.5min
+    time_step = 300.0  # These are 300s = 5min / 450s = 7.5min
     coefficients = propagation_setup.integrator.CoefficientSets.rkdp_87
     integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(time_step,
                                                                                       coefficients,
@@ -269,7 +279,7 @@ def get_model_a1_propagator_settings(bodies: numerical_simulation.environment.Sy
                                                                                       np.inf, np.inf)
     # PROPAGATION SETTINGS
     # Initial conditions
-    initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'J2000', 'NONE', initial_epoch)
+    if initial_state is None: initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'J2000', 'NONE', initial_epoch)
     # Termination condition
     termination_condition = propagation_setup.propagator.time_termination(initial_epoch + simulation_time, True)
     # The settings object
@@ -289,7 +299,8 @@ def get_model_a2_propagator_settings(bodies: numerical_simulation.environment.Sy
                                      simulation_time: float,
                                      initial_epoch: float,
                                      initial_state: np.ndarray,
-                                     dependent_variables: list[propagation_setup.dependent_variable.PropagationDependentVariables] = [])\
+                                     dependent_variables: list[propagation_setup.dependent_variable.PropagationDependentVariables] = [],
+                                     return_integrator_settings = False) \
         -> propagation_setup.propagator.TranslationalStatePropagatorSettings:
 
     '''
@@ -352,7 +363,8 @@ def get_model_a2_propagator_settings(bodies: numerical_simulation.environment.Sy
                                                                   output_variables = dependent_variables)
 
     #check_ephemeris_sufficiency(bodies, initial_epoch + simulation_time)
-    return propagator_settings
+    if return_integrator_settings: return propagator_settings, integrator_settings
+    else: return propagator_settings
 
 
 def get_model_b_propagator_settings(bodies: numerical_simulation.environment.SystemOfBodies,
@@ -581,41 +593,41 @@ def quaternion_to_matrix_history(quaternion_history: dict) -> dict:
     return rotation_matrix_history
 
 
-def get_libration_history(translational_history: dict,
-                          rotational_history: dict) -> dict:
+# def get_libration_history(translational_history: dict,
+#                           rotational_history: dict) -> dict:
+#
+#     epochs_list = list(rotational_history.keys())
+#     quaternion_history = extract_elements_from_history(rotational_history, [0, 1, 2, 3])
+#     rotation_matrix_history = quaternion_to_matrix_history(quaternion_history)
+#
+#     libration_history = dict.fromkeys(epochs_list)
+#     for key in epochs_list:
+#         rtn_to_inertial_matrix = inertial_to_rsw_rotation_matrix(translational_history[key]).T
+#         r = rtn_to_inertial_matrix[:,0]
+#         t = rtn_to_inertial_matrix[:,1]
+#         x = rotation_matrix_history[key][:,0]
+#         cosine_libration = np.dot(x, -r)
+#         sine_libration = np.dot(x, t)
+#         libration_history[key] = np.arctan2(sine_libration, cosine_libration)
+#
+#     return libration_history
 
-    epochs_list = list(rotational_history.keys())
-    quaternion_history = extract_elements_from_history(rotational_history, [0, 1, 2, 3])
-    rotation_matrix_history = quaternion_to_matrix_history(quaternion_history)
 
-    libration_history = dict.fromkeys(epochs_list)
-    for key in epochs_list:
-        rtn_to_inertial_matrix = inertial_to_rsw_rotation_matrix(translational_history[key]).T
-        r = rtn_to_inertial_matrix[:,0]
-        t = rtn_to_inertial_matrix[:,1]
-        x = rotation_matrix_history[key][:,0]
-        cosine_libration = np.dot(x, -r)
-        sine_libration = np.dot(x, t)
-        libration_history[key] = np.arctan2(sine_libration, cosine_libration)
-
-    return libration_history
-
-
-def get_longitudinal_libration_history_from_libration_calculator(translational_history: dict,
-                                                                 gravitational_parameter: float,
-                                                                 libration_amplitude: float) -> dict:
-    epochs_list = list(translational_history.keys())
-    keplerian_history = cartesian_to_keplerian_history(translational_history, gravitational_parameter)
-    e = extract_elements_from_history(keplerian_history, 1)
-    libration_history = dict.fromkeys(epochs_list)
-    for key in epochs_list:
-        r = translational_history[key][:3]
-        v = translational_history[key][3:]
-        libration_history[key] = np.dot(r, v) / np.linalg.norm(np.cross(r, v))
-        libration_history[key] = libration_history[key] * np.sqrt(1 - e[key] * e[key]) / e[key]
-        libration_history[key] = libration_history[key] * libration_amplitude
-
-    return libration_history
+# def get_longitudinal_libration_history_from_libration_calculator(translational_history: dict,
+#                                                                  gravitational_parameter: float,
+#                                                                  libration_amplitude: float) -> dict:
+#     epochs_list = list(translational_history.keys())
+#     keplerian_history = cartesian_to_keplerian_history(translational_history, gravitational_parameter)
+#     e = extract_elements_from_history(keplerian_history, 1)
+#     libration_history = dict.fromkeys(epochs_list)
+#     for key in epochs_list:
+#         r = translational_history[key][:3]
+#         v = translational_history[key][3:]
+#         libration_history[key] = np.dot(r, v) / np.linalg.norm(np.cross(r, v))
+#         libration_history[key] = libration_history[key] * np.sqrt(1 - e[key] * e[key]) / e[key]
+#         libration_history[key] = libration_history[key] * libration_amplitude
+#
+#     return libration_history
 
 
 def get_fourier_elements_from_history(result: dict,
