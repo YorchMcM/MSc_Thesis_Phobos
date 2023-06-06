@@ -1,5 +1,6 @@
 import numpy as np
 from numpy import pi as PI
+from tudatpy.io import save2txt
 TWOPI = 2*PI
 
 
@@ -29,6 +30,29 @@ def str2vec(string: str, separator: str) -> np.ndarray:
     return np.array([float(element) for element in string.split(separator)])
 
 
+def vectorize_matrix(matrix: np.ndarray) -> np.ndarray:
+
+    n = len(matrix[:,0])
+
+    vectorized_matrix = matrix[0,:]
+    for idx in range(1,n):
+        vectorized_matrix = np.concatenate((vectorized_matrix, matrix[idx,:]), 0)
+
+    return vectorized_matrix
+
+
+def unvectorize_matrix(vectorized_matrix: np.ndarray, dimensions: list[int]) -> np.ndarray:
+
+    rows, columns = dimensions
+    if rows*columns != len(vectorized_matrix):
+        raise ValueError('(unvectorize_matrix): Dimensions provided incompatible with vectorized matrices encountered')
+
+    unvectorized_matrix = np.zeros(dimensions)
+    for idx in range(rows): unvectorized_matrix[idx,:] = vectorized_matrix[columns*idx:columns*(idx+1)]
+
+    return unvectorized_matrix
+
+
 def read_vector_history_from_file(file_name: str) -> dict:
 
     with open(file_name, 'r') as file: lines = file.readlines()
@@ -37,6 +61,43 @@ def read_vector_history_from_file(file_name: str) -> dict:
     for idx in range(len(keys)): solution[keys[idx]] = str2vec(lines[idx], '\t')[1:]
 
     return solution
+
+
+def save_matrix_history_to_file(result: dict[float, np.ndarray], filename: str) -> None:
+
+    key_list = list(result.keys())
+    new_dict = dict.fromkeys(key_list)
+    for key in key_list: new_dict[key] = vectorize_matrix(result[key])
+
+    save2txt(new_dict, filename)
+
+    return
+
+
+def read_matrix_history_from_file(filename: str, dimensions: list[int]) -> dict[float, np.ndarray]:
+
+    vectorized_history = read_vector_history_from_file(filename)
+    key_list = list(vectorized_history.keys())
+    unvectorized_history = dict.fromkeys(key_list)
+    for key in key_list: unvectorized_history[key] = unvectorize_matrix(vectorized_history[key], dimensions)
+
+    return unvectorized_history
+
+
+def save_matrix_to_file(matrix: np.ndarray, filename: str) -> None:
+
+    matrix_str = ''
+    rows, columns = matrix.shape
+
+    for row in range(rows):
+        matrix_str = matrix_str + str(matrix[row,0])
+        for column in range(1,columns):
+            matrix_str = matrix_str + ' ' + str(matrix[row,column])
+        matrix_str = matrix_str + '\n'
+
+    with open(filename, 'w') as file: file.write(matrix_str)
+
+    return
 
 
 def read_matrix_from_file(file_name: str, dimensions: list[int]) -> np.ndarray[float]:
@@ -196,3 +257,41 @@ def set_axis_color(axis, side, color):
     axis.yaxis.label.set_color(color)
 
     return
+
+
+def matrix_result_to_column_array(matrix_dict: dict, column_to_extract: int) -> np.ndarray:
+
+    epoch_list = list(matrix_dict.keys())
+    rows = len(epoch_list)
+    columns = len(matrix_dict[epoch_list[0]][:,column_to_extract]) + 1
+    array_to_return = np.zeros([rows, columns])
+
+    array_to_return[:,0] = np.array(epoch_list)
+    for epoch_idx, epoch in enumerate(epoch_list): array_to_return[epoch_idx,1:] = matrix_dict[epoch][:,column_to_extract]
+
+    return array_to_return
+
+
+def matrix_result_to_entry_array(matrix_dict: dict, entry_to_extract: list[int]) -> np.ndarray:
+
+    i, j = entry_to_extract
+    epoch_list = list(matrix_dict.keys())
+    rows = len(epoch_list)
+    array_to_return = np.zeros([rows, 2])
+    array_to_return[:, 0] = np.array(epoch_list)
+    for epoch_idx, epoch in enumerate(epoch_list): array_to_return[epoch_idx,1] = matrix_dict[epoch][i,j]
+
+    return array_to_return
+
+
+def matrix_result_to_row_array(matrix_dict: dict, row_to_extract: int) -> np.ndarray:
+
+    epoch_list = list(matrix_dict.keys())
+    rows = len(epoch_list)
+    columns = len(matrix_dict[epoch_list[0]][row_to_extract,:]) + 1
+    array_to_return = np.zeros([rows, columns])
+
+    array_to_return[:, 0] = np.array(epoch_list)
+    for epoch_idx, epoch in enumerate(epoch_list): array_to_return[epoch_idx,1:] = matrix_dict[epoch][row_to_extract, :]
+
+    return array_to_return

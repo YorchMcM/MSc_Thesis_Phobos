@@ -75,6 +75,7 @@ def rotation_matrix_z(angle: float) -> np.ndarray:
                      [-np.sin(angle), np.cos(angle), 0.0],
                      [           0.0,           0.0, 1.0]])
 
+
 def quaternion_entries_to_euler_angles(quaternion: np.ndarray[4]) -> np.ndarray[3]:
 
     rotation_matrix = quat2mat(quaternion)
@@ -133,6 +134,16 @@ def mean_motion_history_from_keplerian_history(keplerian_history: dict,
 
     return mean_motion_history
 
+
+def covariance_to_correlation(covariance_matrix: np.ndarray) -> np.ndarray:
+
+    correlation_matrix = np.zeros_like(covariance_matrix)
+
+    for i in range(covariance_matrix.shape[0]):
+        for j in range(covariance_matrix.shape[1]):
+            correlation_matrix[i,j] = covariance_matrix[i,j] / np.sqrt(covariance_matrix[i,i]*covariance_matrix[j,j])
+
+    return correlation_matrix
 
 # def mean_anomaly_history_from_keplerian_history(keplerian_history: dict) -> dict:
 #
@@ -869,6 +880,43 @@ def rotate_euler_angles(original_angles: np.ndarray, rotation_matrix: np.ndarray
     new_euler_angles = rotation_matrix_to_313_euler_angles(R_CB)
 
     return new_euler_angles
+
+
+def compute_numerical_partials_in_state_transition_matrix(bodies: numerical_simulation.environment.SystemOfBodies,
+                                                          propagator_settings: propagation_setup.propagator.PropagatorSettings,
+                                                          perturbation_vector: np.ndarray) -> dict[float, np.ndarray] :
+
+    original_initial_state = propagator_settings.initial_states
+
+    # for idx in range(len(perturbation_vector)):
+    for idx in [0]:
+
+        current_perturbation = perturbation_vector[idx]
+        diff = 2*current_perturbation
+
+        # perturbation = np.zeros(len(perturbation_vector))
+        # perturbation[idx] = current_perturbation
+        # trajectory_plus = get_perturbed_trajectory(bodies,
+        #                                            propagator_settings,
+        #                                            perturbation)
+
+        new_initial_state = original_initial_state.copy()
+        new_initial_state[idx] = original_initial_state[idx] + current_perturbation
+        propagator_settings.initial_states = new_initial_state
+        # simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
+        # trajectory_plus = simulator.state_history
+
+
+    state_transition_matrix_history = { 0.0 : np.eye(len(perturbation_vector)) }
+    return state_transition_matrix_history
+
+
+def get_perturbed_trajectory(bodies: numerical_simulation.environment.SystemOfBodies,
+                             propagator_settings: propagation_setup.propagator.PropagatorSettings,
+                             perturbation_vector: np.ndarray) -> dict[float, np.ndarray] :
+
+    return
+
 
 
 class MarsEquatorOfDate():

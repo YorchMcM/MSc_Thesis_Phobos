@@ -32,8 +32,8 @@ INTEGRATOR
 from Auxiliaries import *
 
 verbose = True
-save_results = False
-run_is_for_estimation_check = True
+save_results = True
+run_is_for_estimation_check = False
 
 if run_is_for_estimation_check:
     phobos_ephemerides = get_ephemeris_from_file('/home/yorch/thesis/phobos-ephemerides-3500.txt')
@@ -173,6 +173,7 @@ if checks[4]:
     plt.legend()
     plt.grid()
 
+print('PROGRAM FINISHED SUCCESSFULLY')
 
 '''    
 This propagation gives an average mean motion of 2.278563609852602e-4 rad/s = 19.68678958912648 rad/day. The associated
