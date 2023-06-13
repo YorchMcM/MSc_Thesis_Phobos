@@ -3,28 +3,19 @@ Some scale for things:
     · Semimajor axis : 9500 km
     · Orbital period : 5h
     · Velocity of Phobos : 3 km/s
+    · Reference radius: 13 km
 '''
 
-from Auxiliaries import get_gravitational_field
+import numpy as np
+from Auxiliaries import get_solar_system, get_propagator_settings, mat2quat, inertial_to_rsw_rotation_matrix
+from tudatpy.kernel.interface.spice import get_body_cartesian_state_at_epoch
+from tudatpy.kernel import constants
 
-from tudatpy.kernel.astro.gravitation import inertia_tensor_from_gravity_field
-from tudatpy.kernel.numerical_simulation import environment_setup, environment
+bodies = get_solar_system('C', 'ephemeris/translation-a.eph')
+phobos = bodies.get('Phobos')
 
-# WE FIRST CREATE MARS.
-bodies_to_create = ["Mars"]
-global_frame_origin = "Mars"
-global_frame_orientation = "J2000"
-body_settings = environment_setup.get_default_body_settings(bodies_to_create, global_frame_origin, global_frame_orientation)
-
-# WE THEN CREATE PHOBOS.
-body_settings.add_empty_settings('Phobos')
-body_settings.get('Phobos').gravity_field_settings = get_gravitational_field('Phobos_body_fixed')
-bodies = environment_setup.create_system_of_bodies(body_settings)
-print(bodies.get('Phobos').inertia_tensor)
-I = 0.43  # Mean moment of inertia taken from Rambaux 2012 (no other number found anywhere else)
-bodies.get('Phobos').inertia_tensor = inertia_tensor_from_gravity_field(bodies.get('Phobos').gravity_field_model, I)
-print(bodies.get('Phobos').inertia_tensor)
-
-
-
-
+initial_state = get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'J2000', 'None', 0.0)
+# initial_state = mat2quat(inertial_to_rsw_rotation_matrix(initial_state))
+initial_state = np.concatenate((initial_state, mat2quat(inertial_to_rsw_rotation_matrix(initial_state))), 0)
+initial_state = np.concatenate((initial_state, np.array([0, 0, 1])), 0)
+propagator = get_propagator_settings('C', bodies, 0.0, initial_state, 30.0*constants.JULIAN_DAY)

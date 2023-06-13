@@ -1,120 +1,148 @@
 '''
-In this script we will define model C. It includes:
 
-· Initial epoch: J2000 (01/01/2000 at 12:00)
-· Initial translational state: from spice.
-· Initial rotational state: damped initial state provided by Tudat.
-· Simulation time: 90 days
-· Integrator: fixed-step RKDP7(8) with a time step of 3 minutes
-· Accelerations: Mars' harmonic coefficients up to degree and order 12. Phobos' gravity field up to degree and order 4.
-· Torques: Mars' center of mass on Phobos' 4x4 gravity field.
-· Translational propagator: Cartesian states
-· Rotational propagator: Quaternion and angular velocity vector.
+In this script we will define model C. It propagates the translational and rotational dynamics TOGETHER.
+
+Note: the elements marked with an asterisk (*) are partially or fully defined in this script and are regarded as
+something close to "user inputs". The others are fully set somewhere in the Auxiliaries module.
+
+ENVIRONMENT
+· Global frame origin: Mars' center of mass
+· Global frame orientation: Earth's equator of J2000
+· Mars' gravity field: default from Tudat
+· Phobos' gravity field: From Le Maistre (2019) - All coefficients up to D/O 4/4
+· Phobos' inertia tensor: Derived from the harmonic coefficients.
+· Ephemeris and gravitational parameters of all other bodies: defaults from Tudat
+
+ACCELERATIONS
+· Mars' harmonic coefficients up to degree and order 12.
+· Phobos' full gravity field.
+· Third-body point-mass forces by the Sun, Earth, Deimos and Jupiter
+
+TORQUES
+· Center-of-mass  to  Phobos' full gravity field of the following bodies: Mars, Sun, Earth, Deimos, Jupiter
+
+PROPAGATOR
+· Propagator: Cowell for translational states; quaternion and angular velocity vector for rotational states
+* Initial epoch: J2000 (01/01/2000 at 12:00)
+· Initial state: Tudat-generated damped initial state
+* Simulation time: 10 times the largest dissipation time
+
+INTEGRATOR
+· Integrator: fixed-step RKDP7(8) with a fixed time step of 5 minutes
 
 '''
 
-# IMPORTS
-import numpy as np
-from matplotlib import use
-use('TkAgg')
-from matplotlib import pyplot as plt
-import matplotlib.font_manager as fman
 from Auxiliaries import *
 
-from tudatpy.kernel.interface import spice
-from tudatpy.kernel.astro.element_conversion import rotation_matrix_to_quaternion_entries as mat2quat
-from tudatpy.io import save2txt
+########################################################################################################################
+# SETTINGS
 
-# The following lines set the defaults for plot fonts and font sizes.
-for font in fman.findSystemFonts(r'C:\Users\Yorch\OneDrive - Delft University of Technology\Year 2022-2023\MSc_Thesis_Phobos\Roboto_Slab'):
-    fman.fontManager.addfont(font)
+# Dynamics
+average_mean_motion = 0.0002278563609852602
+phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, longitude slope goes down)
 
-plt.rc('font', family = 'Roboto Slab')
-plt.rc('axes', titlesize = 18)
-plt.rc('axes', labelsize = 16)
-plt.rc('legend', fontsize = 14)
+# Execution
+verbose = True
+retrieve_dependent_variables = False
+save = False
+simulate_and_save_full_dynamics = False
+generate_ephemeris_file = False
+check_undamped = False
 
-# LOAD SPICE KERNELS
-spice.load_standard_kernels()
+########################################################################################################################
+
+
+#                                  4h,  8h,  16h,  1d 8h, 2d 16h, 5d 8h, 10d 16h, 21d 8h, 42d 16h, 85d 8h, 170d 16h, 341d 8h  // Up to 3413d 8h in get_zero_proper_mode function
+dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0,  64.0,   128.0, 256.0,   512.0,  1024.0,  2048.0, 4096.0,   8192.0])*3600.0)  # In seconds.
+# dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0,  64.0])*3600.0)  # In seconds.
+
+if save:
+    save_dir = os.getcwd() + '/results-c/' + str(datetime.now()) + '/'
+    os.makedirs(save_dir)
+
 
 # CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
-# The ephemeris model is irrelevant becuase the translational dynamics of Phobos will be propagated.
-phobos_ephemerides = environment_setup.ephemeris.direct_spice('Mars', 'J2000')
-gravity_field_type = 'FULL'
-gravity_field_source = 'Le Maistre'
-bodies = get_martian_system(phobos_ephemerides, gravity_field_type, gravity_field_source)
-# There are some properties that are not assigned to Phobos' body settings, but rather to the body object itself.
-bodies.get('Phobos').inertia_tensor = inertia_tensor_from_spherical_harmonic_gravity_field(
-    bodies.get('Phobos').gravity_field_model
-)
+if verbose: print('Creating universe...')
+bodies = get_solar_system('C')
 
-bodies_to_propagate = ['Phobos']
-central_bodies = ['Mars']
 
-# ACCELERATION SETTINGS
-acceleration_settings_on_phobos = dict( Mars = [propagation_setup.acceleration.mutual_spherical_harmonic_gravity(12, 12, 4, 4)] )
-acceleration_settings = { 'Phobos' : acceleration_settings_on_phobos }
-acceleration_model = propagation_setup.create_acceleration_models(bodies, acceleration_settings, bodies_to_propagate, central_bodies)
+# DEFINE PROPAGATION
+if verbose: print('Setting up propagation...')
+initial_epoch = 0.0
+initial_state = get_undamped_initial_state_at_epoch(bodies, 'C', initial_epoch, phobos_mean_rotational_rate)
+simulation_time = 10.0 * dissipation_times[-1]
+if retrieve_dependent_variables: dependent_variables = get_list_of_dependent_variables('C', bodies)
+else: dependent_variables = []
+propagator_settings = get_propagator_settings('C', bodies, initial_epoch, initial_state, simulation_time, dependent_variables)
 
-# TORQUE SETTINGS
-torque_settings_on_phobos = dict( Mars = [propagation_setup.torque.spherical_harmonic_gravitational(4, 4)] )
-torque_settings = { 'Phobos' : torque_settings_on_phobos }
-torque_model = propagation_setup.create_torque_models(bodies, torque_settings, bodies_to_propagate)
 
-# INTEGRATOR
-time_step = 180.0  # These are 180s = 3min
-coefficients = propagation_setup.integrator.CoefficientSets.rkdp_87
-integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(time_step,
-                                                                                  coefficients,
-                                                                                  time_step,
-                                                                                  time_step,
-                                                                                  np.inf, np.inf)
-
-# INITIAL CONDITIONS
-# Initial epoch
-initial_epoch = 0.0  # This is the J2000 epoch
-# Initial translational state
-initial_state_trans = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'ECLIPJ2000', 'NONE', initial_epoch)
-# Initial rotational state
-initial_rotation_matrix = np.eye(3)
-initial_angular_velocity = np.zeros(3)
-initial_state_rot = np.zeros(7)
-initial_state_rot[:4] = mat2quat(initial_rotation_matrix)
-initial_state_rot[4:] = initial_angular_velocity
-# Termination condition
-simulation_time = 90.0*constants.JULIAN_DAY
-termination_condition = propagation_setup.propagator.time_termination(simulation_time)
-
-# PROPAGATORS
-# Translational propagator
-propagator_settings_trans = propagation_setup.propagator.translational(central_bodies,
-                                                                       acceleration_model,
-                                                                       bodies_to_propagate,
-                                                                       initial_state_trans,
-                                                                       initial_epoch,
-                                                                       integrator_settings,
-                                                                       termination_condition)
-# Rotational propagator
-propagator_settings_rot = propagation_setup.propagator.rotational(torque_model,
-                                                                  bodies_to_propagate,
-                                                                  initial_state_rot,
-                                                                  initial_epoch,
-                                                                  integrator_settings,
-                                                                  termination_condition)
-# Multi-type propagator
-propagator_list = [propagator_settings_trans, propagator_settings_rot]
-propagator_settings = propagation_setup.propagator.multitype(propagator_list,
-                                                             integrator_settings,
-                                                             initial_epoch,
-                                                             termination_condition)
-
-# COMPUTATION OF DAMPED DYNAMICS
-phobos_mean_rotational_rate = 19.694 / constants.JULIAN_DAY  # In rad/s
-dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0, 64.0])*3600.0)  # In seconds.
+# SIMULATE DYNAMICS BACK AND FORTH AND OBTAIN DAMPED INITIAL STATE TOGETHER WITH A WHOLE BUNCH OF OTHER THINGS
+print('Simulating dynamics. Going into the depths of Tudat...')
+tic = time()
 damping_results = numerical_simulation.propagation.get_zero_proper_mode_rotational_state(bodies,
                                                                                          propagator_settings,
                                                                                          phobos_mean_rotational_rate,
                                                                                          dissipation_times)
+tac = time()
+if verbose: print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
 
-damped_initial_state = damping_results.initial_state
-damped_states = damping_results.forward_backward_states
+previous_states = read_vector_history_from_file('everything-works-results/model-b/states-d8192-full.txt')
+differences = compare_results(damping_results.forward_backward_states[-1][1], previous_states, list(previous_states.keys()))
+
+# SAVE RESULTS
+if save:
+    if verbose: print('Saving results...')
+    log = '\n· Initial epoch: ' + str(initial_epoch) + ' seconds\n· Simulation time: ' + \
+          str(simulation_time / constants.JULIAN_DAY) + ' days\n· Damping times: ' + str(dissipation_times) + '\n'
+    save_initial_states(damping_results, save_dir + 'initial_states.dat')
+    with open(save_dir + 'log.log', 'w') as file: file.write(log)
+    save2txt(damping_results.forward_backward_states[0][0], save_dir + 'states-undamped.dat')
+    if retrieve_dependent_variables:
+        save2txt(damping_results.forward_backward_dependent_variables[0][0], save_dir + 'dependents-undamped.dat')
+    for idx, current_damping_time in enumerate(dissipation_times):
+        time_str = str(int(current_damping_time / 3600.0))
+        save2txt(damping_results.forward_backward_states[idx+1][1], save_dir + 'states-d' + time_str + '.dat')
+        if retrieve_dependent_variables:
+            save2txt(damping_results.forward_backward_dependent_variables[idx+1][1], save_dir + 'dependents-d' + time_str + '.dat')
+    if verbose: print('Results saved.')
+
+
+# SIMULATE AND SAVE THE RESULTS OF ALL DAMPING TIMES UP TO THE SAME FINAL EPOCH
+if simulate_and_save_full_dynamics:
+    if verbose: print('Simulating and saving full dynamics for all damping times...')
+    tic = time()
+    for idx, current_damping_time in enumerate(dissipation_times):
+        time_str = str(int(current_damping_time / 3600.0))
+        print('Simulation ' + str(idx + 1) + '/' + str(len(dissipation_times)))
+        current_initial_state = damping_results.forward_backward_states[idx][1][initial_epoch]
+        current_propagator_settings = get_propagator_settings('C', bodies, initial_epoch, current_initial_state, simulation_time, dependent_variables)
+        current_simulator = numerical_simulation.create_dynamics_simulator(bodies, current_propagator_settings)
+        save2txt(current_simulator.state_history, save_dir + 'states-d' + time_str + '-full.dat')
+        if retrieve_dependent_variables:
+            save2txt(current_simulator.dependent_variable_history, save_dir + 'dependents-d' + time_str + '-full.dat')
+    tac = time()
+    if verbose: print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
+
+
+# GENERATE EPHEMERIS FILE
+if generate_ephemeris_file:
+    if verbose: print('Generating ephemeris file...')
+    if not simulate_and_save_full_dynamics:
+        ephemeris_initial_state = damping_results.forward_backward_states[-1][1][initial_epoch]
+        ephemeris_propagator_settings = get_propagator_settings('C', bodies, initial_epoch, ephemeris_initial_state,
+                                                                simulation_time, dependent_variables)
+        ephemeris_simulator = numerical_simulation.create_dynamics_simulator(bodies, ephemeris_propagator_settings)
+        ephemeris_history = ephemeris_simulator.state_history
+    else: ephemeris_history = current_simulator.state_history
+    eph_dir = os.getcwd() + '/ephemeris/'
+    save2txt(extract_elements_from_history(ephemeris_history, [0, 1, 2, 3, 4, 5]), eph_dir + 'translational-c.eph')
+    save2txt(extract_elements_from_history(ephemeris_history, [6, 7, 8, 9, 10, 11, 12]), eph_dir + 'rotational-c.eph')
+
+
+# POST PROCESS / CHECKS - THIS IS ONLY POSSIBLE IF THE APPROPRIATE DEPENDENT VARIABLES ARE RETRIEVED.
+if retrieve_dependent_variables:
+    checks = [0, 0, 0, 0, 0, 0]
+    run_model_b_checks(checks, bodies, damping_results, check_undamped)
+
+
+print('PROGRAM COMPLETED SUCCESFULLY')

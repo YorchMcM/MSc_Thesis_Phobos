@@ -1,0 +1,54 @@
+
+##### When providing a list, as shown in "INITIAL POSITION PERTURBATION" for example, make sure the elements are separated by a comma and a space: ', '
+
+
+###################################
+####    ESTIMATION SETTINGS    ####
+###################################
+
+· ESTIMATION MODEL: 			A1
+· INITIAL ESTIMATION EPOCH:		1.0 YEAR
+· DURATION OF ESTIMATED ARC:	240.0 DAY
+· ESTIMATED PARAMETERS:			initial state  	# Options: initial state, A, C20 or C22, or a combination thereof (for example "initial state, A" or "initial state, C20").
+
+
+####################################
+####    OBSERVATION SETTINGS    ####
+####################################
+
+· OBSERVATION MODEL:			A1
+· OBSERVATION TYPE:				position						# Options: position or orientation.
+· EPOCH OF FIRST OBSERVATION:	1.0 DAY (OFFSET)
+· EPOCH OF LAST OBSERVATION:	-1.0 DAY (OFFSET)
+· OBSERVATION FREQUENCY:		20 MINUTES
+
+
+#######################################
+####    LS CONVERGENCE SETTINGS    ####
+#######################################
+
+· MAXIMUM NUMBER OF ITERATIONS:				10
+· MINIMUM RESIDUAL CHANGE:					0.0
+· MINIMUM RESIDUAL:							0.0
+· NUMBER OF ITERATIONS WITHOUT IMPROVEMENT:	2
+
+
+####################################
+####    TEST FUNCTIONALITIES    ####
+####################################
+
+· TEST MODE: 								True
+· INITIAL POSITION PERTURBATION: 			200.0, -800.0, 100.0
+· INITIAL VELOCITY PERTURBATION: 			0.02, 0.01, -0.07
+· INITIAL ORIENTATION PERTURBATION: 		500.0, -800.0, 100.0
+· INITIAL ANGULAR VELOCITY PERTURBATION: 	0.02, 0.01, -0.07
+· APPLY PERTURBATION IN RSW:				True
+
+
+##################################
+####    EXECUTION SETTINGS    ####
+##################################
+
+· SAVE RESULTS: 					True
+· SAVE STATE HISTORY PER ITERATION: False
+· POST PROCESS IN PRESENT RUN: 		True

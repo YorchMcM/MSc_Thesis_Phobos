@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 from numpy import pi as PI
 from tudatpy.io import save2txt
@@ -122,6 +124,24 @@ def array2result(array: np.ndarray) -> dict[float, np.ndarray]:
         result[keys[idx]] = array[idx, 1:]
 
     return result
+
+
+def result2array(result: dict) -> np.ndarray:
+
+    n = len(list(result.keys()))
+    array_history = np.concatenate((np.array(list(result.keys())).reshape([n, 1]), np.vstack(list(result.values()))), 1)
+
+    return array_history
+
+
+def bring_history_inside_bounds(original: dict, lower_bound: float,
+                                upper_bound: float, include: str = 'lower') -> np.ndarray:
+
+    original_array = result2array(original)
+    original_array[:,1:] = bring_inside_bounds(original_array[:,1:], lower_bound, upper_bound, include)
+    new = array2result(original_array)
+
+    return new
 
 
 def bring_inside_bounds(original: np.ndarray, lower_bound: float,
@@ -295,3 +315,26 @@ def matrix_result_to_row_array(matrix_dict: dict, row_to_extract: int) -> np.nda
     for epoch_idx, epoch in enumerate(epoch_list): array_to_return[epoch_idx,1:] = matrix_dict[epoch][row_to_extract, :]
 
     return array_to_return
+
+
+def retrieve_ephemeris_files(model: str) -> tuple:
+
+    if model == 'S':
+        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/translation-s.eph'
+        rotational_ephemeris_file = None
+    elif model == 'A1':
+        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/translation-a.eph'
+        rotational_ephemeris_file = None
+    elif model == 'A2':
+        translational_ephemeris_file = None
+        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/rotation-a.eph'
+    elif model == 'B':
+        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/translation-b.eph'
+        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/rotation-b.eph'
+    elif model == 'C':
+        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/translation-c.eph'
+        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/rotation-c.eph'
+    else:
+        raise ValueError('Invalid observation model selected.')
+
+    return translational_ephemeris_file, rotational_ephemeris_file

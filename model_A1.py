@@ -8,15 +8,18 @@ something close to "user inputs". The others are fully set somewhere in the Auxi
 ENVIRONMENT
 · Global frame origin: Mars' center of mass
 · Global frame orientation: Earth's equator of J2000
-* Rotational model: synchronous + once-per-orbit longitudinal libration of amplitude 1.1º (Rambaux et al. 2012)
+* Rotational model (two possibilities):
+    - Fully synchronous
+    - Synchronous + once-per-orbit longitudinal libration of amplitude 1.1º (Rambaux et al. 2012)
 · Mars' gravity field: default from Tudat
-* Phobos' gravity field: From Le Maistre (2019)
-· Ephemerides and gravitational parameters of all other bodies: defaults from Tudat
+· Phobos' gravity field: From Le Maistre (2019) - Only coefficients C00, C20 and C22.
+· Phobos' inertia tensor: Derived from the harmonic coefficients.
+· Ephemeris and gravitational parameters of all other bodies: defaults from Tudat
 
 ACCELERATIONS
 · Mars' harmonic coefficients up to degree and order 12.
 · Phobos' quadrupole gravity field (C20 & C22).
-· Third-body point-mass forces by the Sun, Earth, Moon, Deimos, Jupiter and Saturn
+· Third-body point-mass forces by the Sun, Earth, Deimos and Jupiter
 
 PROPAGATOR
 · Propagator: Cowell
@@ -31,147 +34,78 @@ INTEGRATOR
 
 from Auxiliaries import *
 
-verbose = True
-save_results = True
-run_is_for_estimation_check = False
+########################################################################################################################
+# SETTINGS
 
-if run_is_for_estimation_check:
-    phobos_ephemerides = get_ephemeris_from_file('/home/yorch/thesis/phobos-ephemerides-3500.txt')
-    simulation_time = 3.0 * constants.JULIAN_YEAR
-    initial_epoch = 1.0 * constants.JULIAN_YEAR
-    initial_state = read_vector_history_from_file(getcwd() + '/estimation-ab/alpha/parameter-evolution-a1a1-test-far.txt')[0]
-else:
-    phobos_ephemerides = environment_setup.ephemeris.direct_spice('Mars', 'J2000')
-    simulation_time = 3500.0 * constants.JULIAN_DAY
-    initial_epoch = 0.0
-    initial_state = None
+# Dynamics
+include_libration = False
+
+# Execution
+verbose = True
+retrieve_dependent_variables = False
+save = False
+generate_ephemeris_file = False
+
+########################################################################################################################
+
+if save:
+    save_dir = os.getcwd() + '/simulation-results/model-a1/' + str(datetime.now()) + '/'
+    os.makedirs(save_dir)
+
+if include_libration: model = 'A1'
+else: model = 'S'
 
 
 # CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
-# The ephemeris model is irrelevant because the translational dynamics of Phobos will be propagated. But tudat complains if Phobos doesn't have one.
 if verbose: print('Creating universe...')
-if run_is_for_estimation_check: phobos_ephemerides = get_ephemeris_from_file('/home/yorch/thesis/phobos-ephemerides-3500.txt')
-else: phobos_ephemerides = environment_setup.ephemeris.direct_spice('Mars', 'J2000')
-libration_amplitude = 1.1  # In degrees
-ecc_scale = 0.015034167790105173
-scaled_amplitude = np.radians(libration_amplitude) / ecc_scale
-bodies = get_solar_system(phobos_ephemerides, scaled_amplitude)
+bodies = get_solar_system(model)
+
 
 # DEFINE PROPAGATION
 if verbose: print('Setting up propagation...')
-simulation_time = 3500.0*constants.JULIAN_DAY
-mutual_spherical = propagation_setup.acceleration.mutual_spherical_harmonic_gravity_type
-mars_acceleration_dependent_variable = propagation_setup.dependent_variable.single_acceleration_norm(mutual_spherical, 'Phobos', 'Mars')
-dependent_variables_to_save = [ propagation_setup.dependent_variable.inertial_to_body_fixed_313_euler_angles('Phobos'),  # 0, 1, 2
-                                propagation_setup.dependent_variable.central_body_fixed_spherical_position('Mars', 'Phobos'),  # 3, 4, 5
-                                propagation_setup.dependent_variable.keplerian_state('Phobos', 'Mars'),  # 6, 7, 8, 9, 10, 11
-                                propagation_setup.dependent_variable.central_body_fixed_spherical_position('Phobos', 'Mars'),  # 12, 13, 14
-                                # acceleration_norm_from_body_on_phobos('Sun'), # 15
-                                # acceleration_norm_from_body_on_phobos('Earth'),  # 16
-                                # # acceleration_norm_from_body_on_phobos('Moon'),  # 17
-                                # mars_acceleration_dependent_variable,  # 18
-                                # acceleration_norm_from_body_on_phobos('Deimos'),  # 19
-                                # acceleration_norm_from_body_on_phobos('Jupiter'),  # 20
-                                # acceleration_norm_from_body_on_phobos('Saturn')  # 25
-                                ]
 initial_epoch = 0.0
-propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time, initial_epoch, initial_state, dependent_variables_to_save)
+initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'J2000', 'None', 0.0)
+simulation_time = 3500.0*constants.JULIAN_DAY
+if retrieve_dependent_variables: dependent_variables = get_list_of_dependent_variables(model, bodies)
+else: dependent_variables = []
+propagator_settings = get_propagator_settings(model, bodies, initial_epoch, initial_state, simulation_time, dependent_variables)
+
 
 # SIMULATE DYNAMICS
-tic = time()
 if verbose: print('Simulating dynamics...')
+tic = time()
 simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
-if save_results:
-    save2txt(simulator.state_history, 'phobos-ephemerides-3500.txt')
-    save2txt(simulator.dependent_variable_history, 'a1-dependent-variables-3500.txt')
 tac = time()
-print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
+if verbose: print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
 
-# POST PROCESS (CHECKS)
+
+# SAVE RESULTS
+if save:
+
+    if verbose: print('Saving results...')
+    log = '\n· Model: ' + model + '\n· Initial epoch: ' + str(initial_epoch) + ' seconds\n· Simulation time: ' + \
+          str(simulation_time / constants.JULIAN_DAY) + ' days\n'
+    with open(save_dir + 'log.log', 'w') as file: file.write(log)
+    save2txt(simulator.state_history, save_dir + 'state-history.dat')
+    if retrieve_dependent_variables:
+        save2txt(simulator.dependent_variable_history, save_dir + 'dependent-variable-history.dat')
+    if verbose: print('Results saved.')
+
+
+# GENERATE EPHEMERIS FILE
+if generate_ephemeris_file:
+
+    if verbose: print('Generating ephemeris file...')
+    eph_dir = os.getcwd() + '/ephemeris/'
+    if model == 'S': filename = 'translational-s.eph'
+    else: filename = 'translational-a.eph'
+    save2txt(simulator.state_history, eph_dir + filename)
+
+
+# POST PROCESS / CHECKS
 checks = [0, 0, 0, 0, 0]
-mars_mu = bodies.get('Mars').gravitational_parameter
-dependents = simulator.dependent_variable_history
-epochs_array = np.array(list(simulator.state_history.keys()))
-keplerian_history = extract_elements_from_history(simulator.dependent_variable_history, list(range(6,12)))
-average_mean_motion, orbits = average_mean_motion_over_integer_number_of_orbits(keplerian_history, mars_mu)
-print('Average mean motion over', orbits, 'orbits:', average_mean_motion, 'rad/s =', average_mean_motion*86400.0, 'rad/day')
+run_model_a1_checks(checks, bodies, simulator)
 
-# Trajectory
-if checks[0]:
-    trajectory_3d(simulator.state_history, ['Phobos'], 'Mars')
-
-# Orbit does not blow up.
-if checks[1]:
-    plot_kepler_elements(keplerian_history)
-
-# Orbit is equatorial
-if checks[2]:
-    sub_phobian_point = result2array(extract_elements_from_history(simulator.dependent_variable_history, [13, 14]))
-    sub_phobian_point[:,1:] = bring_inside_bounds(sub_phobian_point[:,1:], -PI, PI, include = 'upper')
-
-    plt.figure()
-    plt.scatter(sub_phobian_point[:,2] * 360.0 / TWOPI, sub_phobian_point[:,1] * 360.0 / TWOPI)
-    plt.grid()
-    plt.title('Sub-phobian point')
-    plt.xlabel('LON [º]')
-    plt.ylabel('LAT [º]')
-
-    plt.figure()
-    plt.plot(epochs_array / 86400.0, sub_phobian_point[:,1] * 360.0 / TWOPI, label = r'$Lat$')
-    plt.plot(epochs_array / 86400.0, sub_phobian_point[:,2] * 360.0 / TWOPI, label = r'$Lon$')
-    plt.legend()
-    plt.grid()
-    plt.title('Sub-phobian point')
-    plt.xlabel('Time [days since J2000]')
-    plt.ylabel('Coordinate [º]')
-
-# Phobos' x axis points towards Mars with a once-per-orbit longitudinal libration with amplitude as specified above.
-if checks[3]:
-    sub_martian_point = result2array(extract_elements_from_history(simulator.dependent_variable_history, [4, 5]))
-    sub_martian_point[:,1:] = bring_inside_bounds(sub_martian_point[:,1:], -PI, PI, include = 'upper')
-    libration_history = extract_elements_from_history(simulator.dependent_variable_history, 5)
-    libration_freq, libration_amp = get_fourier_elements_from_history(libration_history)
-    # phobos_mean_rotational_rate = 0.00022785759213999574  # In rad/s
-    phobos_mean_rotational_rate = 0.000227995  # In rad/s
-
-    plt.figure()
-    plt.scatter(sub_martian_point[:,2] * 360.0 / TWOPI, sub_martian_point[:,1] * 360.0 / TWOPI)
-    plt.grid()
-    plt.title('Sub-martian point')
-    plt.xlabel('LON [º]')
-    plt.ylabel('LAT [º]')
-
-    plt.figure()
-    plt.plot(epochs_array / 86400.0, sub_martian_point[:,1] * 360.0 / TWOPI, label = r'$Lat$')
-    plt.plot(epochs_array / 86400.0, sub_martian_point[:,2] * 360.0 / TWOPI, label = r'$Lon$')
-    plt.legend()
-    plt.grid()
-    plt.title('Sub-martian point')
-    plt.xlabel('Time [days since J2000]')
-    plt.ylabel('Coordinate [º]')
-
-    plt.figure()
-    plt.loglog(libration_freq * 86400.0, libration_amp * 360 / TWOPI, marker = '.')
-    plt.axline((phobos_mean_rotational_rate * 86400.0, 0),(phobos_mean_rotational_rate * 86400.0, 1), ls = 'dashed', c = 'r', label = 'Phobian mean motion')
-    plt.title(r'Libration frequency content')
-    plt.xlabel(r'$\omega$ [rad/day]')
-    plt.ylabel(r'$A [º]$')
-    plt.grid()
-    # plt.xlim([0, 21])
-    plt.legend()
-
-# Accelerations exerted by all third bodies. This will be used to assess whether the bodies are needed or not.
-if checks[4]:
-    third_body_accelerations = result2array(extract_elements_from_history(dependents, list(range(15,20))))
-    third_bodies = ['Sun', 'Earth', 'Moon', 'Mars', 'Deimos', 'Jupiter', 'Saturn']
-    plt.figure()
-    for idx, body in enumerate(third_bodies):
-        plt.semilogy(epochs_array / 86400.0, third_body_accelerations[:,idx+1], label = body)
-    plt.title('Third body accelerations')
-    plt.xlabel('Time [days since J2000]')
-    plt.ylabel(r'Acceleration [m/s²]')
-    plt.legend()
-    plt.grid()
 
 print('PROGRAM FINISHED SUCCESSFULLY')
 

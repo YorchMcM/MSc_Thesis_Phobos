@@ -7,81 +7,128 @@ Some scale for things:
 
 import os
 from datetime import datetime
+from shutil import copyfile
 
 from Auxiliaries import *
 
 from tudatpy.kernel.numerical_simulation import estimation, estimation_setup, Estimator
 from tudatpy.kernel.numerical_simulation.estimation_setup import observation, parameter
 
-save = True
-save_state_history_per_iteration = False
-post_process_in_this_file = True
+settings = EstimationSettings(os.getcwd() + '/estimation-settings.inp')
 
-observation_model = 'Synch'
-estimation_model = 'Synch'
+########################################################################################################################
+# SETTINGS COLLECTION
+#
+# Estimation
+estimation_model = settings.estimation_settings['estimation model']
+initial_estimation_epoch = settings.estimation_settings['initial estimation epoch']
+duration_of_estimated_arc = settings.estimation_settings['duration of estimated arc']
+estimated_parameters = settings.estimation_settings['estimated parameters']
 
-if save:
-    save_dir = os.getcwd() + '/estimation-alpha-test/' + str(datetime.now()) + '/'
+# Observations
+observation_model = settings.observation_settings['observation model']
+observation_types = settings.observation_settings['observation type']
+epoch_of_first_observation = settings.observation_settings['epoch of first observation']
+epoch_of_last_observation = settings.observation_settings['epoch of last observation']
+observation_frequency = settings.observation_settings['observation frequency']
+
+# Least squares convergence
+maximum_number_of_iterations = settings.ls_convergence_settings['maximum number of iterations']
+minimum_residual_change = settings.ls_convergence_settings['minimum residual change']
+minimum_residual = settings.ls_convergence_settings['minimum residual']
+number_of_iterations_without_improvement = settings.ls_convergence_settings['number of iterations without improvement']
+
+# Test functionalities
+test_mode = settings.test_functionalities['test mode']
+initial_position_perturbation = settings.test_functionalities['initial position perturbation']
+initial_velocity_perturbation = settings.test_functionalities['initial velocity perturbation']
+initial_orientation_perturbation = settings.test_functionalities['initial orientation perturbation']
+initial_angular_velocity_perturbation = settings.test_functionalities['initial angular velocity perturbation']
+apply_perturbation_in_rsw = settings.test_functionalities['apply perturbation in rsw']
+
+# Execution
+save = settings.execution_settings['save results']
+save_state_history_per_iteration = settings.execution_settings['save state history per iteration']
+post_process_in_this_file = settings.execution_settings['post process in present run']
+
+########################################################################################################################
+
+if settings.execution_settings['save results']:
+    estimation_type = settings.get_estimation_type()
+    if estimation_type is None:
+        save_dir = os.getcwd() + '/estimation-results/' + str(datetime.now()) + '/'
+    else:
+        save_dir = os.getcwd() + '/estimation-results/' + estimation_type + '/' + str(datetime.now()) + '/'
     os.makedirs(save_dir)
+    copyfile(settings.source_file, save_dir + 'settings.log')
+
 
 # CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
-if observation_model == 'Synch':
-    trajectory_file = '/home/yorch/thesis/phobos-ephemerides-3500-nolib.txt'
-elif observation_model == 'A1':
-    trajectory_file = '/home/yorch/thesis/phobos-ephemerides-3500.txt'
-elif observation_model == 'B':
-    trajectory_file = '/home/yorch/thesis/everything-works-results/model-b/states-d8192.txt'
+translational_ephemeris_file, rotational_ephemeris_file = retrieve_ephemeris_files(observation_model)
+bodies = get_solar_system(estimation_model, translational_ephemeris_file, rotational_ephemeris_file)
+
+# ESTIMATION DYNAMICS
+
+if estimation_model != 'A2':
+    true_translational_state = bodies.get('Phobos').ephemeris.interpolator.interpolate(initial_estimation_epoch)
+if estimation_model in ['A2', 'B', 'C']:
+    true_rotational_state = bodies.get('Phobos').rotation_model.interpolator.interpolate(initial_estimation_epoch)
+
+if test_mode:
+    if estimation_model != 'A2':
+        if apply_perturbation_in_rsw:
+            RSW_R_I = inertial_to_rsw_rotation_matrix(true_translational_state)
+            R = np.concatenate((np.concatenate((RSW_R_I, np.zeros([3, 3])), 1), np.concatenate((np.zeros([3, 3]), RSW_R_I), 1)), 0)
+        else: R = np.eye(6)
+        translational_state = true_translational_state + R.T @ np.concatenate((initial_position_perturbation, initial_velocity_perturbation))
+    if estimation_model in ['A2', 'B', 'C']:
+        rotational_state = true_rotational_state + np.concatenate((initial_orientation_perturbation, initial_angular_velocity_perturbation))
+else: translational_state = true_translational_state
+
+if estimation_model in ['S', 'A1']:
+    initial_state = translational_state
+    true_initial_state = true_translational_state
+elif estimation_model == ['A2']:
+    initial_state = rotational_state
+    true_initial_state = true_rotational_state
 else:
-    raise ValueError('Invalid observation model selected.')
+    initial_state = np.concatenate((translational_state, rotational_state))
+    true_initial_state = np.concatenate((true_translational_state, true_rotational_state))
 
-phobos_ephemerides = get_ephemeris_from_file(trajectory_file)
-if estimation_model == 'Synch': libration_amplitude = 0.0
-else: libration_amplitude = 1.1  # In degrees
-ecc_scale = 0.015034167790105173
-scaled_amplitude = np.radians(libration_amplitude) / ecc_scale
-bodies = get_solar_system(phobos_ephemerides, scaled_amplitude)
+initial_state = settings.get_estimation_initial_state()
+propagator_settings = get_propagator_settings(estimation_model, bodies, initial_estimation_epoch, initial_state, duration_of_estimated_arc)
 
-# PROPAGATOR
-simulation_time = 1.0 * constants.JULIAN_YEAR
-initial_estimation_epoch = 1.0 * constants.JULIAN_YEAR
-position_perturbation = np.array([500.0, -800.0, 100.0])
-velocity_perturbation = np.array([0.02, 0.01, -0.07])
-if estimation_model in ['A1', 'Synch']:
-    perturbation = np.concatenate((position_perturbation, velocity_perturbation))
-    perturbed_initial_state = bodies.get('Phobos').ephemeris.interpolator.interpolate(initial_estimation_epoch) + perturbation
-    propagator_settings = get_model_a1_propagator_settings(bodies, simulation_time, initial_estimation_epoch, initial_state = perturbed_initial_state)
-if estimation_model == 'B':
-    perturbation = np.zeros(13)
-    perturbation[:3] = position_perturbation
-    perturbed_initial_state = bodies.get('Phobos').ephemeris.interpolator.interpolate(initial_estimation_epoch) + perturbation
-    propagator_settings = get_model_b_propagator_settings(bodies, simulation_time, initial_epoch = initial_estimation_epoch,
-                                                          initial_state = perturbed_initial_state)
 
-true_initial_state = bodies.get('Phobos').ephemeris.interpolator.interpolate(initial_estimation_epoch)
-RSW_R_I = inertial_to_rsw_rotation_matrix(true_initial_state)
-R = np.concatenate((np.concatenate((RSW_R_I, np.zeros([3, 3])), 1), np.concatenate((np.zeros([3, 3]), RSW_R_I), 1)), 0)
 # PARAMETERS TO ESTIMATE
 parameters_str = ''
 parameter_settings = estimation_setup.parameter.initial_states(propagator_settings, bodies)
 parameters_str = parameters_str + '\t- Initial state\n'
-# parameter_settings = parameter_settings + [estimation_setup.parameter.spherical_harmonics_c_coefficients_block('Phobos', [(2,0),(2,2)])]
-# parameters_str = parameters_str + '\t- C20\n'
-# parameters_str = parameters_str + '\t- C22\n'
-# Libration amplitude missing ???
+if 'A' in estimated_parameters:
+    # AQUÍ ME FALTA EXPONER LA LIBRATION AMPLITUDE COMO ESTIMATABLE PARAMETER (CREO)
+    pass
+if 'C20' in estimated_parameters and 'C22' in estimated_parameters:
+    parameter_settings = parameter_settings + [estimation_setup.parameter.spherical_harmonics_c_coefficients_block('Phobos', [(2,0),(2,2)])]
+    parameters_str = parameters_str + '\t- C20\n'
+    parameters_str = parameters_str + '\t- C22\n'
+elif 'C20' in estimated_parameters:
+    parameter_settings = parameter_settings + [estimation_setup.parameter.spherical_harmonics_c_coefficients_block('Phobos', [(2,0)])]
+    parameters_str = parameters_str + '\t- C20\n'
+elif 'C22' in estimated_parameters:
+    parameter_settings = parameter_settings + [estimation_setup.parameter.spherical_harmonics_c_coefficients_block('Phobos', [(2,2)])]
+    parameters_str = parameters_str + '\t- C22\n'
+
 parameters_to_estimate = estimation_setup.create_parameter_set(parameter_settings, bodies)
 
-# LINK SET UP
+
+
+# OBSERVATION SIMULATION
+#Link set up
 link_ends = { observation.observed_body : observation.body_origin_link_end_id('Phobos') }
 link = observation.LinkDefinition(link_ends)
-
-# NOW, WE CREATE THE OBSERVATIONS
+# Observation creation
 observation_model_settings = observation.cartesian_position(link)
-
-t0 = 1.0 * constants.JULIAN_YEAR + 86400.0
-tf = 1.0 * constants.JULIAN_YEAR + simulation_time - 86400.0
-dt = 20.0 * 60.0  # 20min
-N = int((tf - t0) / dt) + 1
-observation_times = np.linspace(t0, tf, N)
+N = int((epoch_of_last_observation - epoch_of_first_observation) / observation_frequency) + 1
+observation_times = np.linspace(epoch_of_first_observation, epoch_of_last_observation, N)
 
 observable_type = observation.position_observable_type
 observation_simulation_settings = observation.tabulated_simulation_settings(observable_type,
@@ -95,10 +142,6 @@ observation_collection = estimation.simulate_observations([observation_simulatio
                                                           observation_simulators,
                                                           bodies)
 
-maximum_number_of_iterations = 10
-minimum_residual_change = 0.0
-minimum_residual = 0.0
-number_of_iterations_without_improvement = 2
 convergence_checker = estimation.estimation_convergence_checker(maximum_iterations = maximum_number_of_iterations,
                                                                 minimum_residual_change = minimum_residual_change,
                                                                 minimum_residual = minimum_residual,
@@ -108,14 +151,18 @@ estimation_input.define_estimation_settings(save_state_history_per_iteration)
 
 # We will first save the log, before starting the possibly very long estimation process.
 if save:
-    log = '\nOBSERVATIONS\n· Observation model: ' + observation_model + '\n· Ephemeris file: ' + trajectory_file + \
-          '\n· Epoch of first observation: ' + str(t0 / 86400.0) + ' days\n· Epoch of last observation: ' + str(tf / 86400.0) + \
-          ' days\n· Frequency: ' + str(dt / 60.0) + ' min\n\nESTIMATION\n· Estimation model: ' + estimation_model + \
-          '\n· Libration amplitude: ' + str(libration_amplitude) + ' degrees\n· Initial epoch: ' + str(initial_estimation_epoch/86400.0) + \
-          ' days\n· Final epoch: ' + str((initial_estimation_epoch+simulation_time)/86400.0) + ' days\n· True initial state: ' + str(true_initial_state) + \
-          '\n· Perturbation: ' + str(perturbation) + '\n· Estimated parameters:\n' + parameters_str + '\nCONVERGENCE\n' + \
-          '· Maximum number of iterations: ' + str(maximum_number_of_iterations) + '\n· Minimum residual change: ' + \
-          str(minimum_residual_change) + '\n· Minimum residual: ' + str(minimum_residual) + '\n· Number of iterations without improvement: ' + \
+    perturbation = np.concatenate((initial_position_perturbation, initial_velocity_perturbation))
+    log = '\nESTIMATION\n· Estimation model: ' + estimation_model + '\n· Initial epoch: ' + \
+          str(initial_estimation_epoch/86400.0) + ' days\n· Final epoch: ' + \
+          str((initial_estimation_epoch+duration_of_estimated_arc)/86400.0) + ' days\n· True initial state: ' \
+          + str(true_initial_state) + '\n· Perturbation: ' + str(perturbation) + '\n· Estimated parameters:\n' + \
+          parameters_str + '\nOBSERVATIONS\n· Observation model: ' + observation_model + '\n· Ephemeris file: ' + \
+          str(translational_ephemeris_file) + '\n· Rotation file: ' + str(rotational_ephemeris_file) + \
+          '\n· Epoch of first observation: ' + str(epoch_of_first_observation / 86400.0) + \
+          ' days\n· Epoch of last observation: ' + str(epoch_of_last_observation / 86400.0) + ' days\n· Frequency: ' + \
+          str(observation_frequency / 60.0) + ' min\n\nCONVERGENCE\n' + '· Maximum number of iterations: ' + \
+          str(maximum_number_of_iterations) + '\n· Minimum residual change: ' + str(minimum_residual_change) + \
+          '\n· Minimum residual: ' + str(minimum_residual) + '\n· Number of iterations without improvement: ' + \
           str(number_of_iterations_without_improvement)
 
     with open(save_dir + 'log.txt', 'w') as file: file.write(log)
@@ -138,8 +185,11 @@ print('Estimation completed. Time taken:', (tac - tic) / 60.0, 'min')
 
 residual_history, parameter_evolution, residual_rms_evolution = extract_estimation_output(estimation_output, list(observation_times), 'position')
 
-rsw_covariance = R @ estimation_output.covariance[:6,:6] @ R.T
-rsw_correlation = covariance_to_correlation(rsw_covariance)
+if apply_perturbation_in_rsw:
+    RSW_R_I = inertial_to_rsw_rotation_matrix(true_translational_state)
+    R = np.concatenate((np.concatenate((RSW_R_I, np.zeros([3, 3])), 1), np.concatenate((np.zeros([3, 3]), RSW_R_I), 1)), 0)
+    rsw_covariance = R @ estimation_output.covariance[:6,:6] @ R.T
+    rsw_correlation = covariance_to_correlation(rsw_covariance)
 
 if save:
 
