@@ -7,10 +7,11 @@ from datetime import datetime
 from time import time
 from cycler import cycler
 
+if '/home/yorch/tudat-bundle/cmake-build-release/tudatpy' not in sys.path:
+    sys.path.insert(0, '/home/yorch/tudat-bundle/cmake-build-release/tudatpy')
+
 from astromath import *
 from Logistics import *
-
-sys.path.insert(0, '/home/yorch/tudat-bundle/cmake-build-release/tudatpy')
 
 # TUDAT IMPORTS
 
@@ -219,6 +220,43 @@ def save_initial_states(damping_results: numerical_simulation.propagation.Damped
     return
 
 
+def get_parameter_set(estimated_parameters: list[str],
+                      bodies: numerical_simulation.environment.SystemOfBodies,
+                      propagator_settings: propagation_setup.propagator.PropagatorSettings | None = None,
+                      return_only_settings_list: bool = True) -> tuple:
+
+    parameter_settings = []
+    parameters_str = ''
+
+    if propagator_settings is not None:
+        parameter_settings = estimation_setup.parameter.initial_states(propagator_settings, bodies)
+        parameters_str = parameters_str + '\t- Initial state\n'
+
+    if 'A' in estimated_parameters:
+        warnings.warn('Libration amplitude selected as parameter to estimate, but not exposed to Python yet.')
+        # AQUÍ ME FALTA EXPONER LA LIBRATION AMPLITUDE COMO ESTIMATABLE PARAMETER (CREO)
+        pass
+    if 'C20' in estimated_parameters and 'C22' in estimated_parameters:
+        parameter_settings = parameter_settings + [
+            estimation_setup.parameter.spherical_harmonics_c_coefficients_block('Phobos', [(2, 0), (2, 2)])]
+        parameters_str = parameters_str + '\t- C20\n'
+        parameters_str = parameters_str + '\t- C22\n'
+    elif 'C20' in estimated_parameters:
+        parameter_settings = parameter_settings + [
+            estimation_setup.parameter.spherical_harmonics_c_coefficients_block('Phobos', [(2, 0)])]
+        parameters_str = parameters_str + '\t- C20\n'
+    elif 'C22' in estimated_parameters:
+        parameter_settings = parameter_settings + [
+            estimation_setup.parameter.spherical_harmonics_c_coefficients_block('Phobos', [(2, 2)])]
+        parameters_str = parameters_str + '\t- C22\n'
+
+    if return_only_settings_list:
+        return parameter_settings, parameters_str
+    else:
+        parameters_to_estimate = estimation_setup.create_parameter_set(parameter_settings, bodies)
+        return parameters_to_estimate, parameters_str
+
+
 class EstimationSettings:
 
     def __init__(self, settings_file: str):
@@ -236,8 +274,6 @@ class EstimationSettings:
         return
 
     def read_settings_from_file(self) -> None:
-
-        print('Reading settings...')
 
         with open(self.source_file, 'r') as file: all_lines = [line for line in file.readlines() if line != '\n']
 
@@ -393,35 +429,48 @@ class EstimationSettings:
 
         return estimation_type
 
-    def get_estimation_initial_state(self) -> np.ndarray:
+    def get_initial_state(self, type: str) -> np.ndarray:
 
-        estimation_model = self.estimation_settings['estimation model']
+        type = type.lower()
+        if type not in ['true', 'estimation']:
+            raise ValueError('Invalid type of initial state. Only accepted options are "true" and "estimation".')
 
-        if estimation_model != 'A2':
-            initial_translational_state = self.get_initial_estimation_translational_state()
-        if estimation_model in ['A2', 'B', 'C']:
-            initial_rotational_state = self.get_initial_estimation_rotational_state()
+        if type == 'estimation':
+            model = self.estimation_settings['estimation model']
+        else:
+            model = self.observation_settings['observation model']
 
-        if estimation_model in ['S', 'A1']:
+        if model != 'A2':
+            initial_translational_state = self.get_initial_translational_state(type, model)
+        if model in ['A2', 'B', 'C']:
+            initial_rotational_state = self.get_initial_rotational_state(type, model)
+
+        if model in ['S', 'A1']:
             initial_state = initial_translational_state
-        elif estimation_model == 'A2':
+        elif model == 'A2':
             initial_state = initial_rotational_state
         else:
             initial_state = np.concatenate((initial_translational_state, initial_rotational_state))
 
         return initial_state
 
-    def get_initial_estimation_translational_state(self):
+    def get_initial_translational_state(self, type: str, model: str | None = None) -> np.ndarray:
 
         if self.estimation_settings['estimation model'] == 'A2':
             raise ValueError('You\'re in the wrong place my dude')
 
-        ephemeris, trash = retrieve_ephemeris_files(self.estimation_settings['estimation model'])
+        if model is None:
+            if type == 'estimation':
+                model = self.estimation_settings['estimation model']
+            else:
+                model = self.observation_settings['observation model']
+
+        ephemeris, trash = retrieve_ephemeris_files(model)
         initial_state = create_vector_interpolator(read_vector_history_from_file(ephemeris)).interpolate(
             self.estimation_settings['initial estimation epoch']
         )
 
-        if self.test_functionalities['test mode']:
+        if type == 'estimation' and self.test_functionalities['test mode']:
             pos_pert = self.test_functionalities['initial position perturbation']
             vel_pert = self.test_functionalities['initial velocity perturbation']
             pert = np.concatenate((pos_pert, vel_pert))
@@ -433,16 +482,23 @@ class EstimationSettings:
 
         return initial_state
 
-    def get_initial_estimation_rotational_state(self):
+    def get_initial_rotational_state(self, type: str, model: str | None = None) -> np.ndarray:
 
         if self.estimation_settings['estimation model'] in ['S', 'A1']:
             raise ValueError('You\'re in the wrong place my dude')
 
-        trash, ephemeris = retrieve_ephemeris_files(self.estimation_settings['estimation model'])
+        if model is None:
+            if type == 'estimation':
+                model = self.estimation_settings['estimation model']
+            else:
+                model = self.observation_settings['observation model']
+
+        trash, ephemeris = retrieve_ephemeris_files(model)
         initial_state = create_vector_interpolator(read_vector_history_from_file(ephemeris)).interpolate(
             self.estimation_settings['initial estimation epoch']
         )
-        if self.test_functionalities['test mode']:
+
+        if type == 'estimation' and self.test_functionalities['test mode']:
             ori_pert = self.test_functionalities['initial orientation perturbation']
             ome_pert = self.test_functionalities['initial angular velocity perturbation']
             pert = np.concatenate((ori_pert, ome_pert))
@@ -634,7 +690,7 @@ def get_undamped_initial_state_at_epoch(bodies: numerical_simulation.environment
     phobos_ephemeris = bodies.get('Phobos').ephemeris
     if type(phobos_ephemeris) is spice.SpiceEphemeris:
         translational_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'J2000', 'None', epoch)
-    elif type(phobos_ephemeris) is environment_setup.ephemeris.TabulatedEphemerisSettings:
+    elif type(phobos_ephemeris) is numerical_simulation.environment.TabulatedEphemeris:
         translational_state = phobos_ephemeris.interpolator.interpolate(epoch)
     else:
         raise TypeError('Unsupported ephemeris.')
@@ -642,10 +698,12 @@ def get_undamped_initial_state_at_epoch(bodies: numerical_simulation.environment
     phobos_rotation = bodies.get('Phobos').rotation_model
     omega = np.array([0, 0, phobos_mean_rotational_rate])
     if type(phobos_rotation) is numerical_simulation.environment.SynchronousRotationalEphemeris:
-        rotational_state = np.concatenate((mat2quat(inertial_to_rsw_rotation_matrix(translational_state)),
-                                           omega), 0)
+        synchronous_orientation = inertial_to_rsw_rotation_matrix(translational_state).T
+        synchronous_orientation[:,:2] = -1.0*synchronous_orientation[:,:2]
+        synchronous_orientation = mat2quat(synchronous_orientation)
+        rotational_state = np.concatenate((synchronous_orientation, omega), 0)
     elif type(phobos_rotation) is numerical_simulation.environment.TabulatedRotationalEphemeris:
-        rotational_state = np.concatenate((phobos_rotation.interpolator.interpolate(epoch), omega), 0)
+        rotational_state = (phobos_rotation.interpolator.interpolate(epoch))
     else:
         raise TypeError('Unsupported rotation.')
 
@@ -1197,6 +1255,13 @@ def run_model_a2_checks(checks: list[int],
             plt.ylabel('Coordinate [º]')
 
         plt.figure()
+        plt.scatter(sub_martian_point[:, 2] * 360.0 / TWOPI, sub_martian_point[:, 1] * 360.0 / TWOPI)
+        plt.grid()
+        plt.title(r'Damped sub-martian point')
+        plt.xlabel('LON [º]')
+        plt.ylabel('LAT [º]')
+
+        plt.figure()
         plt.plot(epochs_array / 86400.0, sub_martian_point[:, 1] * 360.0 / TWOPI, label=r'$Lat$')
         plt.plot(epochs_array / 86400.0, sub_martian_point[:, 2] * 360.0 / TWOPI, label=r'$Lon$')
         plt.legend()
@@ -1236,35 +1301,35 @@ def run_model_a2_checks(checks: list[int],
         plt.grid()
         plt.legend()
 
-    # Torques exerted by third bodies
-    if checks[5]:
-
-        # third_bodies = ['Sun', 'Earth', 'Moon', 'Mars', 'Deimos', 'Jupiter', 'Saturn']
-        third_bodies = ['Sun', 'Earth', 'Mars', 'Deimos', 'Jupiter']
-
-        if check_undamped:
-            third_body_torques_undamped = result2array(
-                extract_elements_from_history(dependents_undamped, list(range(18, 23))))
-            plt.figure()
-            for idx, body in enumerate(third_bodies):
-                plt.semilogy(epochs_array / 86400.0, third_body_torques_undamped[:, idx + 1], label=body)
-            plt.title('Third body torques (undamped rotation)')
-            plt.xlabel('Time [days since J2000]')
-            plt.ylabel(r'Torque [N$\cdot$m]')
-            plt.yticks([1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15])
-            plt.legend()
-            plt.grid()
-
-        third_body_torques = result2array(extract_elements_from_history(dependents_damped, list(range(18, 23))))
-        plt.figure()
-        for idx, body in enumerate(third_bodies):
-            plt.semilogy(epochs_array / 86400.0, third_body_torques[:, idx + 1], label=body)
-        plt.title('Third body torques')
-        plt.xlabel('Time [days since J2000]')
-        plt.ylabel(r'Torque [N$\cdot$m]')
-        plt.yticks([1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15])
-        plt.legend()
-        plt.grid()
+    # # Torques exerted by third bodies
+    # if checks[5]:
+    #
+    #     # third_bodies = ['Sun', 'Earth', 'Moon', 'Mars', 'Deimos', 'Jupiter', 'Saturn']
+    #     third_bodies = ['Sun', 'Earth', 'Mars', 'Deimos', 'Jupiter']
+    #
+    #     if check_undamped:
+    #         third_body_torques_undamped = result2array(
+    #             extract_elements_from_history(dependents_undamped, list(range(18, 23))))
+    #         plt.figure()
+    #         for idx, body in enumerate(third_bodies):
+    #             plt.semilogy(epochs_array / 86400.0, third_body_torques_undamped[:, idx + 1], label=body)
+    #         plt.title('Third body torques (undamped rotation)')
+    #         plt.xlabel('Time [days since J2000]')
+    #         plt.ylabel(r'Torque [N$\cdot$m]')
+    #         plt.yticks([1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15])
+    #         plt.legend()
+    #         plt.grid()
+    #
+    #     third_body_torques = result2array(extract_elements_from_history(dependents_damped, list(range(18, 23))))
+    #     plt.figure()
+    #     for idx, body in enumerate(third_bodies):
+    #         plt.semilogy(epochs_array / 86400.0, third_body_torques[:, idx + 1], label=body)
+    #     plt.title('Third body torques')
+    #     plt.xlabel('Time [days since J2000]')
+    #     plt.ylabel(r'Torque [N$\cdot$m]')
+    #     plt.yticks([1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15])
+    #     plt.legend()
+    #     plt.grid()
 
 
 def run_model_b_checks(checks: list[int],
@@ -1464,6 +1529,13 @@ def run_model_b_checks(checks: list[int],
             plt.ylabel('Coordinate [º]')
 
         plt.figure()
+        plt.scatter(sub_martian_point[:, 2] * 360.0 / TWOPI, sub_martian_point[:, 1] * 360.0 / TWOPI)
+        plt.grid()
+        plt.title(r'Damped sub-martian point')
+        plt.xlabel('LON [º]')
+        plt.ylabel('LAT [º]')
+
+        plt.figure()
         plt.plot(epochs_array / 86400.0, sub_martian_point[:, 1] * 360.0 / TWOPI, label=r'$Lat$')
         plt.plot(epochs_array / 86400.0, sub_martian_point[:, 2] * 360.0 / TWOPI, label=r'$Lon$')
         plt.legend()
@@ -1505,35 +1577,35 @@ def run_model_b_checks(checks: list[int],
         plt.grid()
         plt.legend()
 
-    # Torques exerted by third bodies
-    if checks[5]:
-
-        # third_bodies = ['Sun', 'Earth', 'Moon', 'Mars', 'Deimos', 'Jupiter', 'Saturn']
-        third_bodies = ['Sun', 'Earth', 'Mars', 'Deimos', 'Jupiter']
-
-        if check_undamped:
-            third_body_torques_undamped = result2array(
-                extract_elements_from_history(dependents_undamped, list(range(18, 23))))
-            plt.figure()
-            for idx, body in enumerate(third_bodies):
-                plt.semilogy(epochs_array / 86400.0, third_body_torques_undamped[:, idx + 1], label=body)
-            plt.title('Third body torques (undamped rotation)')
-            plt.xlabel('Time [days since J2000]')
-            plt.ylabel(r'Torque [N$\cdot$m]')
-            plt.yticks([1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15])
-            plt.legend()
-            plt.grid()
-
-        third_body_torques = result2array(extract_elements_from_history(dependents_damped, list(range(18, 23))))
-        plt.figure()
-        for idx, body in enumerate(third_bodies):
-            plt.semilogy(epochs_array / 86400.0, third_body_torques[:, idx + 1], label=body)
-        plt.title('Third body torques')
-        plt.xlabel('Time [days since J2000]')
-        plt.ylabel(r'Torque [N$\cdot$m]')
-        plt.yticks([1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15])
-        plt.legend()
-        plt.grid()
+    # # Torques exerted by third bodies
+    # if checks[5]:
+    #
+    #     # third_bodies = ['Sun', 'Earth', 'Moon', 'Mars', 'Deimos', 'Jupiter', 'Saturn']
+    #     third_bodies = ['Sun', 'Earth', 'Mars', 'Deimos', 'Jupiter']
+    #
+    #     if check_undamped:
+    #         third_body_torques_undamped = result2array(
+    #             extract_elements_from_history(dependents_undamped, list(range(18, 23))))
+    #         plt.figure()
+    #         for idx, body in enumerate(third_bodies):
+    #             plt.semilogy(epochs_array / 86400.0, third_body_torques_undamped[:, idx + 1], label=body)
+    #         plt.title('Third body torques (undamped rotation)')
+    #         plt.xlabel('Time [days since J2000]')
+    #         plt.ylabel(r'Torque [N$\cdot$m]')
+    #         plt.yticks([1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15])
+    #         plt.legend()
+    #         plt.grid()
+    #
+    #     third_body_torques = result2array(extract_elements_from_history(dependents_damped, list(range(18, 23))))
+    #     plt.figure()
+    #     for idx, body in enumerate(third_bodies):
+    #         plt.semilogy(epochs_array / 86400.0, third_body_torques[:, idx + 1], label=body)
+    #     plt.title('Third body torques')
+    #     plt.xlabel('Time [days since J2000]')
+    #     plt.ylabel(r'Torque [N$\cdot$m]')
+    #     plt.yticks([1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15])
+    #     plt.legend()
+    #     plt.grid()
 
 
 def plot_kepler_elements(keplerian_history: dict, title: str = None) -> None:
@@ -1642,13 +1714,13 @@ class MarsEquatorOfDate():
 
         return
 
-    def get_mars_to_J2000_rotation_matrix(self):
+    def get_mars_to_J2000_rotation_matrix(self) -> np.ndarray:
 
         psi = bring_inside_bounds(PI/2 + self.alpha_0, 0.0, TWOPI)
         theta = bring_inside_bounds(PI/2 - self.delta_0, 0.0, TWOPI)
         phi = bring_inside_bounds(self.W, 0.0, TWOPI)
 
-        return euler_angles_to_rotation_matrix([psi, theta, phi])
+        return euler_angles_to_rotation_matrix(np.array([psi, theta, phi]))
 
     def get_euler_angles_wrt_mars_equator(self) -> np.ndarray:
 
@@ -1659,23 +1731,25 @@ class MarsEquatorOfDate():
 
     def rotate_euler_angles_from_J2000_to_mars_equator(self, euler_angles_j2000: np.ndarray) -> np.ndarray:
 
-        return rotate_euler_angles(euler_angles_j2000, self.mars_j2000_rotation)
+        return rotate_euler_angles(euler_angles_j2000, self.get_mars_to_J2000_rotation_matrix())
 
 
 def extract_estimation_output(estimation_output: numerical_simulation.estimation.EstimationOutput,
                               observation_times: list[float],
-                              residual_type: str) -> tuple:
+                              residual_type: str,
+                              norm_position: bool = False) -> tuple:
 
     if residual_type not in ['position', 'orientation']:
         raise ValueError('(): Invalid residual type. Only "position" and "orientation" are allowed. Residual type provided is "' + residual_type + '".')
 
     number_of_iterations = estimation_output.residual_history.shape[1]
     iteration_array = list(range(number_of_iterations + 1))
+    full_residual_history = np.hstack((estimation_output.residual_history, np.atleast_2d(estimation_output.final_residuals).T))
     if residual_type == 'position':
-        residual_history = extract_position_residuals(estimation_output.residual_history,
+        residual_history = extract_position_residuals(full_residual_history,
                                                       observation_times,
-                                                      number_of_iterations)
-        residual_rms_evolution = get_position_rms_evolution(residual_history)
+                                                      norm_position)
+        residual_rms_evolution = get_position_rms_evolution(residual_history, norm_position)
     if residual_type == 'orientation':
         residual_history = extract_orientation_residuals(estimation_output.residual_history,
                                                          observation_times,

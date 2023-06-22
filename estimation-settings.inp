@@ -8,8 +8,9 @@
 
 · ESTIMATION MODEL: 			A1
 · INITIAL ESTIMATION EPOCH:		1.0 YEAR
-· DURATION OF ESTIMATED ARC:	240.0 DAY
+· DURATION OF ESTIMATED ARC:	10.0 DAY
 · ESTIMATED PARAMETERS:			initial state  	# Options: initial state, A, C20 or C22, or a combination thereof (for example "initial state, A" or "initial state, C20").
+· NORM POSITION RESIDUALS:		True
 
 
 ####################################
@@ -27,7 +28,7 @@
 ####    LS CONVERGENCE SETTINGS    ####
 #######################################
 
-· MAXIMUM NUMBER OF ITERATIONS:				10
+· MAXIMUM NUMBER OF ITERATIONS:				20
 · MINIMUM RESIDUAL CHANGE:					0.0
 · MINIMUM RESIDUAL:							0.0
 · NUMBER OF ITERATIONS WITHOUT IMPROVEMENT:	2
@@ -49,6 +50,6 @@
 ####    EXECUTION SETTINGS    ####
 ##################################
 
-· SAVE RESULTS: 					True
+· SAVE RESULTS: 					False
 · SAVE STATE HISTORY PER ITERATION: False
 · POST PROCESS IN PRESENT RUN: 		True

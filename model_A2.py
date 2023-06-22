@@ -44,17 +44,22 @@ phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, l
 
 # Execution
 verbose = True
-retrieve_dependent_variables = False
+retrieve_dependent_variables = True
 save = False
 simulate_and_save_full_dynamics = False
 generate_ephemeris_file = False
 check_undamped = False
+checks = [1, 1, 1, 1, 1, 1]
 
 ########################################################################################################################
+
+if sum(checks) > 0:
+    retrieve_dependent_variables = True
 
 
 #                                  4h,  8h,  16h,  1d 8h, 2d 16h, 5d 8h, 10d 16h, 21d 8h, 42d 16h, 85d 8h, 170d 16h, 341d 8h, 682d 16h  // Up to 6826d 16h in get_zero_proper_mode function
 dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0,  64.0,   128.0, 256.0,   512.0,  1024.0,  2048.0, 4096.0,   8192.0])*3600.0)  # In seconds.
+# dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0])*3600.0)  # In seconds.
 
 if save:
     save_dir = os.getcwd() + '/simulation-results/model-a2/' + str(datetime.now()) + '/'
@@ -134,13 +139,12 @@ if generate_ephemeris_file:
         ephemeris_simulator = numerical_simulation.create_dynamics_simulator(bodies, ephemeris_propagator_settings)
         ephemeris_history = ephemeris_simulator.state_history
     else: ephemeris_history = current_simulator.state_history
-    filename = os.getcwd() + '/ephemeris/rotational-a.eph'
+    filename = os.getcwd() + '/ephemeris/rotation-a.eph'
     save2txt(ephemeris_history, filename)
 
 
 # POST PROCESS / CHECKS - THIS IS ONLY POSSIBLE IF THE APPROPRIATE DEPENDENT VARIABLES ARE RETRIEVED.
 if retrieve_dependent_variables:
-    checks = [0, 0, 0, 0, 0, 0]
     run_model_a2_checks(checks, bodies, damping_results, check_undamped)
 
 

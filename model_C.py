@@ -46,7 +46,7 @@ verbose = True
 retrieve_dependent_variables = False
 save = False
 simulate_and_save_full_dynamics = False
-generate_ephemeris_file = False
+generate_ephemeris_file = True
 check_undamped = False
 
 ########################################################################################################################
@@ -86,8 +86,6 @@ damping_results = numerical_simulation.propagation.get_zero_proper_mode_rotation
 tac = time()
 if verbose: print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
 
-previous_states = read_vector_history_from_file('everything-works-results/model-b/states-d8192-full.txt')
-differences = compare_results(damping_results.forward_backward_states[-1][1], previous_states, list(previous_states.keys()))
 
 # SAVE RESULTS
 if save:
@@ -135,8 +133,8 @@ if generate_ephemeris_file:
         ephemeris_history = ephemeris_simulator.state_history
     else: ephemeris_history = current_simulator.state_history
     eph_dir = os.getcwd() + '/ephemeris/'
-    save2txt(extract_elements_from_history(ephemeris_history, [0, 1, 2, 3, 4, 5]), eph_dir + 'translational-c.eph')
-    save2txt(extract_elements_from_history(ephemeris_history, [6, 7, 8, 9, 10, 11, 12]), eph_dir + 'rotational-c.eph')
+    save2txt(extract_elements_from_history(ephemeris_history, [0, 1, 2, 3, 4, 5]), eph_dir + 'translation-c.eph')
+    save2txt(extract_elements_from_history(ephemeris_history, [6, 7, 8, 9, 10, 11, 12]), eph_dir + 'rotation-c.eph')
 
 
 # POST PROCESS / CHECKS - THIS IS ONLY POSSIBLE IF THE APPROPRIATE DEPENDENT VARIABLES ARE RETRIEVED.

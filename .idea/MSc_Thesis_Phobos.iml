@@ -3,7 +3,7 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$" />
     <content url="file://$USER_HOME$/tudat-bundle/cmake-build-release/tudatpy" />
-    <orderEntry type="jdk" jdkName="tudat-bundle" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="tudat-space-pygmo" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

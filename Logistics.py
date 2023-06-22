@@ -171,16 +171,9 @@ def bring_inside_bounds(original: np.ndarray, lower_bound: float,
 def bring_inside_bounds_single_dim(original: np.ndarray, lower_bound: float,
                                    upper_bound: float, include: str = 'lower') -> np.ndarray:
 
-    interval_length = upper_bound - lower_bound
     new = np.zeros_like(original)
     for idx in range(len(new)):
-        new[idx] = original[idx]
-        if include == 'lower':
-            while new[idx] < lower_bound : new[idx] = new[idx] + interval_length
-            while new[idx] >= upper_bound : new[idx] = new[idx] - interval_length
-        if include == 'upper':
-            while new[idx] <= lower_bound : new[idx] = new[idx] + interval_length
-            while new[idx] > upper_bound : new[idx] = new[idx] - interval_length
+        new[idx] = bring_inside_bounds_scalar(original[idx], lower_bound, upper_bound, include)
 
     return new
 
@@ -188,18 +181,43 @@ def bring_inside_bounds_single_dim(original: np.ndarray, lower_bound: float,
 def bring_inside_bounds_double_dim(original: np.ndarray, lower_bound: float,
                                    upper_bound: float, include: str = 'lower') -> np.ndarray:
 
-    interval_length = upper_bound - lower_bound
     lengths = original.shape
     new = np.zeros_like(original)
     for idx0 in range(lengths[0]):
         for idx1 in range(lengths[1]):
-            new[idx0, idx1] = original[idx0, idx1]
-            if include == 'lower':
-                while new[idx0, idx1] < lower_bound : new[idx0, idx1] = new[idx0, idx1] + interval_length
-                while new[idx0, idx1] >= upper_bound : new[idx0, idx1] = new[idx0, idx1] - interval_length
-            if include == 'upper':
-                while new[idx0, idx1] <= lower_bound : new[idx0, idx1] = new[idx0, idx1] + interval_length
-                while new[idx0, idx1] > upper_bound : new[idx0, idx1] = new[idx0, idx1] - interval_length
+            new[idx0, idx1] = bring_inside_bounds_scalar(original[idx0, idx1], lower_bound, upper_bound, include)
+
+    return new
+
+
+def bring_inside_bounds_scalar(original: float, lower_bound: float,
+                               upper_bound: float, include: str = 'lower') -> float:
+
+    if original == upper_bound or original == lower_bound:
+        if include == 'lower':
+            return lower_bound
+        else:
+            return upper_bound
+
+    if lower_bound < original < upper_bound:
+        return original
+
+    center = (upper_bound + lower_bound) / 2.0
+
+    if original < lower_bound: reflect = True
+    else: reflect = False
+
+    if reflect: original = 2.0*center - original
+
+    dividend = original - lower_bound
+    divisor = upper_bound - lower_bound
+    remainder = dividend % divisor
+    new = lower_bound + remainder
+
+    if reflect: new = 2.0*center - new
+
+    if new == lower_bound and include == 'upper': new = upper_bound
+    if new == upper_bound and include == 'lower': new = lower_bound
 
     return new
 
@@ -208,9 +226,9 @@ def remove_jumps(original: np.ndarray, jump_height: float, margin: float = 0.03)
 
     dim_num = len(original.shape)
 
-    if dim_num == 1: return remove_jumps_single_dim(original, jump_height)
-    elif dim_num == 2: return remove_jumps_double_dim(original, jump_height)
-    else: raise ValueError('(make_monotonic): Invalid input array.')
+    if dim_num == 1: return remove_jumps_single_dim(original, jump_height, margin)
+    elif dim_num == 2: return remove_jumps_double_dim(original, jump_height, margin)
+    else: raise ValueError('(remove_jumps): Invalid input array.')
 
 
 def remove_jumps_single_dim(original: np.ndarray, jump_height: float, margin: float = 0.03) -> np.ndarray:

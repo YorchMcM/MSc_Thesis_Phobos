@@ -43,13 +43,16 @@ phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, l
 
 # Execution
 verbose = True
-retrieve_dependent_variables = False
+retrieve_dependent_variables = True
 save = False
 simulate_and_save_full_dynamics = False
 generate_ephemeris_file = False
 check_undamped = False
+checks = [1, 1, 1, 1, 1, 1]
 
 ########################################################################################################################
+if sum(checks) > 0:
+    retrieve_dependent_variables = True
 
 
 #                                  4h,  8h,  16h,  1d 8h, 2d 16h, 5d 8h, 10d 16h, 21d 8h, 42d 16h, 85d 8h, 170d 16h, 341d 8h, 682d 16h  // Up to 6826d 16h in get_zero_proper_mode function
@@ -85,9 +88,6 @@ damping_results = numerical_simulation.propagation.get_zero_proper_mode_rotation
                                                                                          dissipation_times)
 tac = time()
 if verbose: print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
-
-previous_states = read_vector_history_from_file('everything-works-results/model-b/states-d8192-full.txt')
-differences = compare_results(damping_results.forward_backward_states[-1][1], previous_states, list(previous_states.keys()))
 
 # SAVE RESULTS
 if save:
@@ -135,13 +135,12 @@ if generate_ephemeris_file:
         ephemeris_history = ephemeris_simulator.state_history
     else: ephemeris_history = current_simulator.state_history
     eph_dir = os.getcwd() + '/ephemeris/'
-    save2txt(extract_elements_from_history(ephemeris_history, [0, 1, 2, 3, 4, 5]), eph_dir + 'translational-b.eph')
-    save2txt(extract_elements_from_history(ephemeris_history, [6, 7, 8, 9, 10, 11, 12]), eph_dir + 'rotational-b.eph')
+    save2txt(extract_elements_from_history(ephemeris_history, [0, 1, 2, 3, 4, 5]), eph_dir + 'translation-b.eph')
+    save2txt(extract_elements_from_history(ephemeris_history, [6, 7, 8, 9, 10, 11, 12]), eph_dir + 'rotation-b.eph')
 
 
 # POST PROCESS / CHECKS - THIS IS ONLY POSSIBLE IF THE APPROPRIATE DEPENDENT VARIABLES ARE RETRIEVED.
 if retrieve_dependent_variables:
-    checks = [0, 0, 0, 0, 0, 0]
     run_model_b_checks(checks, bodies, damping_results, check_undamped)
 
 
