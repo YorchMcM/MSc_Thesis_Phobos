@@ -238,7 +238,6 @@ def remove_jumps_single_dim(original: np.ndarray, jump_height: float, margin: fl
     l = -1.0 + margin
     for idx in range(len(new)-1):
         d = (new[idx+1] - new[idx]) / jump_height
-        # print('d = ' + str(d))
         if d <= l: new[idx+1:] = new[idx+1:] + jump_height
         if d >= u: new[idx+1:] = new[idx+1:] - jump_height
 

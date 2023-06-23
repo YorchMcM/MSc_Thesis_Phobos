@@ -43,13 +43,17 @@ phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, l
 
 # Execution
 verbose = True
-retrieve_dependent_variables = False
+retrieve_dependent_variables = True
 save = False
 simulate_and_save_full_dynamics = False
-generate_ephemeris_file = True
+generate_ephemeris_file = False
 check_undamped = False
+checks = [0, 0, 0, 0, 0, 0]
 
 ########################################################################################################################
+
+if sum(checks) > 0:
+    retrieve_dependent_variables = True
 
 
 #                                  4h,  8h,  16h,  1d 8h, 2d 16h, 5d 8h, 10d 16h, 21d 8h, 42d 16h, 85d 8h, 170d 16h, 341d 8h  // Up to 3413d 8h in get_zero_proper_mode function
@@ -138,9 +142,7 @@ if generate_ephemeris_file:
 
 
 # POST PROCESS / CHECKS - THIS IS ONLY POSSIBLE IF THE APPROPRIATE DEPENDENT VARIABLES ARE RETRIEVED.
-if retrieve_dependent_variables:
-    checks = [0, 0, 0, 0, 0, 0]
-    run_model_b_checks(checks, bodies, damping_results, check_undamped)
+if retrieve_dependent_variables: run_model_b_checks(checks, bodies, damping_results, check_undamped)
 
 
 print('PROGRAM COMPLETED SUCCESFULLY')

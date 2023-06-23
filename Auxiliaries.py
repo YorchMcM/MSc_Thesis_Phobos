@@ -8,10 +8,9 @@ from time import time
 from cycler import cycler
 
 if '/home/yorch/tudat-bundle/cmake-build-release/tudatpy' not in sys.path:
-    sys.path.insert(0, '/home/yorch/tudat-bundle/cmake-build-release/tudatpy')
+    sys.path.extend('/home/yorch/tudat-bundle/cmake-build-release/tudatpy')
 
 from astromath import *
-from Logistics import *
 
 # TUDAT IMPORTS
 
