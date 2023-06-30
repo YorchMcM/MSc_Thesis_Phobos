@@ -46,9 +46,9 @@ verbose = True
 retrieve_dependent_variables = True
 save = False
 simulate_and_save_full_dynamics = False
-generate_ephemeris_file = False
+generate_ephemeris_file = True
 check_undamped = False
-checks = [0, 0, 0, 0, 0, 0]
+checks = [1, 1, 1, 1, 1, 1]
 
 ########################################################################################################################
 

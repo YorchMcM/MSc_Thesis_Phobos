@@ -44,12 +44,12 @@ phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, l
 
 # Execution
 verbose = True
-retrieve_dependent_variables = True
+retrieve_dependent_variables = False
 save = False
 simulate_and_save_full_dynamics = False
 generate_ephemeris_file = False
 check_undamped = False
-checks = [1, 1, 1, 1, 1, 1]
+checks = [0, 0, 0, 0, 0, 0]
 
 ########################################################################################################################
 

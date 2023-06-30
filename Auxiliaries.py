@@ -8,7 +8,7 @@ from time import time
 from cycler import cycler
 
 if '/home/yorch/tudat-bundle/cmake-build-release/tudatpy' not in sys.path:
-    sys.path.extend('/home/yorch/tudat-bundle/cmake-build-release/tudatpy')
+    sys.path.extend(['/home/yorch/tudat-bundle/cmake-build-release/tudatpy'])
 
 from astromath import *
 
@@ -138,7 +138,7 @@ def quaternion_to_matrix_history(quaternion_history: dict) -> dict:
     return rotation_matrix_history
 
 
-def average_mean_motion_over_integer_number_of_orbits(keplerian_history: dict, gravitational_parameter: float) -> float:
+def average_mean_motion_over_integer_number_of_orbits(keplerian_history: dict, gravitational_parameter: float) -> float | tuple:
 
     mean_motion_history = mean_motion_history_from_keplerian_history(keplerian_history, gravitational_parameter)
     periapses = get_periapses(keplerian_history)
@@ -532,7 +532,7 @@ def get_gravitational_field(frame_name: str,
     phobos_reference_radius = 14e3
 
     phobos_normalized_cosine_coefficients = read_matrix_from_file(cosines_file, [5,5])
-    phobos_normalized_sine_coefficients = read_matrix_from_file(sines_file, [5, 5])
+    phobos_normalized_sine_coefficients = read_matrix_from_file(sines_file, [5,5])
 
     settings_to_return = environment_setup.gravity_field.spherical_harmonic(
         phobos_gravitational_parameter,
@@ -1605,6 +1605,8 @@ def run_model_b_checks(checks: list[int],
     #     plt.yticks([1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15])
     #     plt.legend()
     #     plt.grid()
+
+    plt.show()
 
 
 def plot_kepler_elements(keplerian_history: dict, title: str = None) -> None:
