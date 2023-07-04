@@ -38,15 +38,19 @@ from Auxiliaries import *
 # SETTINGS
 
 # Dynamics
-include_libration = False
+include_libration = True
 
 # Execution
 verbose = True
 retrieve_dependent_variables = False
 save = False
 generate_ephemeris_file = False
+checks = [1, 1, 1, 1, 1]
 
 ########################################################################################################################
+
+if sum(checks) > 0:
+    retrieve_dependent_variables = True
 
 if save:
     save_dir = os.getcwd() + '/simulation-results/model-a1/' + str(datetime.now()) + '/'
@@ -103,19 +107,9 @@ if generate_ephemeris_file:
 
 
 # POST PROCESS / CHECKS
-checks = [0, 0, 0, 0, 0]
-run_model_a1_checks(checks, bodies, simulator)
+if retrieve_dependent_variables:
+    # run_model_a1_checks(checks, bodies, simulator)
+    run_model_a1_checks([0, 0, 0, 1, 0], bodies, simulator)
 
 
 print('PROGRAM FINISHED SUCCESSFULLY')
-
-'''    
-This propagation gives an average mean motion of 2.278563609852602e-4 rad/s = 19.68678958912648 rad/day. The associated
-orbital period is of 7h 39min 35.20s.
-The tweaked rotational motion in model A2 is of 2.28035245e-4 rad/s = 19.702245168 rad/day. The associated rotational
-period is of 7h 39min 13.57s.
-
-This propagated solution is accurate to the 8th significant digit. Performing a longer propagation (of 3500 days) and
-averaging over an integer number of orbits (10971 orbits) produces an average mean motion of
-2.2785636146219538e-4 rad/s = 19.68678963033368 rad/day. The associate orbital period is 7h 39min 35.20s.
-'''

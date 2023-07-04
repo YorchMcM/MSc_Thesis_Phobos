@@ -21,6 +21,10 @@ from tudatpy.kernel.astro.element_conversion import rotation_matrix_to_quaternio
 from tudatpy.kernel.astro.element_conversion import quaternion_entries_to_rotation_matrix as quat2mat
 from tudatpy.kernel.astro.element_conversion import cartesian_to_keplerian, true_to_mean_anomaly, semi_major_axis_to_mean_motion
 
+from matplotlib import use
+use('TkAgg')
+import matplotlib.pyplot as plt
+
 # Public imports (i.e. required by all other scripts importing this module but not necessarily used here)
 from tudatpy.kernel.interface import spice
 from tudatpy.kernel import constants, numerical_simulation
@@ -30,9 +34,6 @@ from tudatpy.plotting import trajectory_3d
 from tudatpy.io import save2txt
 
 import matplotlib.font_manager as fman
-from matplotlib import use
-use('TkAgg')
-import matplotlib.pyplot as plt
 
 for font in fman.findSystemFonts(r'/home/yorch/thesis/Roboto_Slab'):
     fman.fontManager.addfont(font)
@@ -46,7 +47,7 @@ plt.rcParams['axes.prop_cycle'] = cycler('color', ['#0072BD', '#D95319', '#EDB12
                                                    '#77AC30', '#4DBEEE', '#A2142F', '#7f7f7f', '#bcbd22', '#17becf'])
 plt.rcParams['lines.markersize'] = 6.0
 
-spice.load_standard_kernels()
+spice.load_standard_kernels([])
 
 '''
 
@@ -1015,6 +1016,9 @@ def run_model_a1_checks(checks: list[int],
         sub_martian_point[:, 1:] = bring_inside_bounds(sub_martian_point[:, 1:], -PI, PI, include='upper')
         libration_history = extract_elements_from_history(simulator.dependent_variable_history, 5)
         libration_freq, libration_amp = get_fourier_elements_from_history(libration_history)
+        a_freq, a_amp = get_fourier_elements_from_history(extract_elements_from_history(keplerian_history, 0))
+        e_freq, e_amp = get_fourier_elements_from_history(extract_elements_from_history(keplerian_history, 1))
+        # raan_freq, raan_amp = get_fourier_elements_from_history(extract_elements_from_history(keplerian_history, 4), clean_signal = [TWOPI, 1])
         # phobos_mean_rotational_rate = 0.00022785759213999574  # In rad/s
         phobos_mean_rotational_rate = 0.000227995  # In rad/s
 
@@ -1036,13 +1040,15 @@ def run_model_a1_checks(checks: list[int],
 
         plt.figure()
         plt.loglog(libration_freq * 86400.0, libration_amp * 360 / TWOPI, marker='.')
+        # plt.loglog(a_freq * 86400.0, a_amp, marker='.', label = '$a$')
+        # plt.loglog(e_freq * 86400.0, e_amp, marker='.', label = '$e$')
+        # plt.loglog(raan_freq * 86400.0, raan_amp * 360 / TWOPI, marker='.', label = 'RAAN')
         plt.axline((phobos_mean_rotational_rate * 86400.0, 0), (phobos_mean_rotational_rate * 86400.0, 1), ls='dashed',
                    c='r', label='Phobian mean motion')
         plt.title(r'Libration frequency content')
         plt.xlabel(r'$\omega$ [rad/day]')
         plt.ylabel(r'$A [º]$')
         plt.grid()
-        # plt.xlim([0, 21])
         plt.legend()
 
     # Accelerations exerted by all third bodies. This will be used to assess whether the bodies are needed or not.
