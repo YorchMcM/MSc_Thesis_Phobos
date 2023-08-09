@@ -1,8 +1,40 @@
 from numpy.typing import ArrayLike
 from numpy.fft import rfft, rfftfreq
 from numpy.polynomial.polynomial import polyfit
+from numpy.linalg import norm
 
 from Logistics import *
+
+
+def norm_rows(array: np.ndarray) -> np.ndarray:
+    return norm(array, axis = 1)
+    # return np.array([np.linalg.norm(array[k,:]) for k in range(array.shape[0])])
+
+
+def norm_columns(array: np.ndarray) -> np.ndarray:
+    return norm(array, axis = 0)
+    # return np.array([np.linalg.norm(array[:,k]) for k in range(array.shape[1])])
+
+
+def norm_history(history: dict) -> dict:
+
+    epoch_list = list(history.keys())
+    normed_history = dict.fromkeys(epoch_list)
+    for epoch in epoch_list:
+        normed_history[epoch] = np.linalg.norm(history[epoch])
+
+    return normed_history
+
+
+def unit(vector: np.ndarray) -> np.ndarray:
+
+    temp = norm(vector)
+    if temp == 0.0:
+        to_return = vector
+    else:
+        to_return = vector / temp
+
+    return to_return
 
 
 def rms(array: np.ndarray) -> float:
@@ -108,23 +140,45 @@ def get_synodic_period(period1: float, period2: float) -> float:
     return 1.0/abs((1.0/period1)-(1.0/period2))
 
 
-def get_position_rms_evolution(residual_history: dict, norm_position: bool) -> dict:
+def get_position_statistical_indicators_evolution(residual_histories: list[dict],
+                                                  norm_residuals: bool,
+                                                  convert_residuals_to_rsw: bool) -> dict:
 
-    residual_array = result2array(residual_history)
-    if norm_position: number_of_iterations = int(residual_array.shape[1] - 2)
-    else: number_of_iterations = int((residual_array.shape[1] - 1) / 3)
+    residual_array = result2array(residual_histories[0])
+    number_of_iterations = int((residual_array.shape[1] - 4) / 3)
     iteration_list = list(range(number_of_iterations + 1))
-    rms_evolution = dict.fromkeys(iteration_list)
 
-    if norm_position:
-        for idx in iteration_list: rms_evolution[idx] = rms(residual_array[:,idx+1])
-    else:
+    indicators_evolution = [dict.fromkeys(iteration_list)]
+
+    for idx in iteration_list:
+        indicators_evolution[0][idx] = np.zeros(12)
+        for k in range(3):
+            indicators_evolution[0][idx][4*k:4*(k+1)] = np.array([min(residual_array[:,3*idx+k+1]),
+                                                                  np.mean(residual_array[:,3*idx+k+1]),
+                                                                  rms(residual_array[:,3*idx+k+1]),
+                                                                  max(residual_array[:,3*idx+k+1])])
+
+    if norm_residuals:
+        indicators_evolution.append(dict.fromkeys(iteration_list))
+        residual_array = result2array(residual_histories[1])
         for idx in iteration_list:
-            rms_evolution[idx] = np.zeros(3)
-            for k in range(3):
-                rms_evolution[idx][k] = rms(residual_array[:,3*(idx+1)+k+1])
+            indicators_evolution[1][idx] = np.array([min(residual_array[:,idx+1]),
+                                                     np.mean(residual_array[:,idx+1]),
+                                                     rms(residual_array[:,idx+1]),
+                                                     max(residual_array[:,idx+1])])
 
-    return rms_evolution
+    if convert_residuals_to_rsw:
+        indicators_evolution.append(dict.fromkeys(iteration_list))
+        residual_array = result2array(residual_histories[-1])
+        for idx in iteration_list:
+            indicators_evolution[-1][idx] = np.zeros(12)
+            for k in range(3):
+                indicators_evolution[-1][idx][4*k:4*(k+1)] = np.array([min(residual_array[:,3*idx+k+1]),
+                                                                       np.mean(residual_array[:,3*idx+k+1]),
+                                                                       rms(residual_array[:,3*idx+k+1]),
+                                                                       max(residual_array[:,3*idx+k+1])])
+
+    return indicators_evolution
 
 
 def extract_position_residuals(residual_history: np.ndarray,
@@ -161,7 +215,7 @@ def extract_position_residuals(residual_history: np.ndarray,
         ...
     last_epoch      :
 
-    The new structure is going to be as follows for norm_position == False:
+    The new structure is going to be as follows for norm_position == True:
 
 
                       r_iter1, r_iter2, ... , r_iterN
@@ -197,6 +251,88 @@ def extract_position_residuals(residual_history: np.ndarray,
         new_residual_history[epoch] = current_array
 
     return new_residual_history
+
+
+def rearrange_position_residuals(residual_history: np.ndarray,
+                                 ephemeris_states_at_observation_times: dict[float, np.ndarray]) -> dict:
+
+    '''
+
+    The old structure is as follows:
+
+                        iter1       iter2       iter3       iter4       ...     ...     ...     interN
+    x_first_epoch   :
+    y_first_epoch   :
+    z_first_epoch   :
+    x_second_epoch  :
+    y_second_epoch  :
+    z_second_epoch  :
+        ...
+        ...
+        ...
+    x_last_epoch    :
+    y_last_epoch    :
+    z_last_epoch    :
+
+    The new structure is going to be as follows:
+
+
+                      x_iter1, y_iter1, z_iter1, x_iter2, y_iter2, z_iter2, ... , x_iterN, y_iterN, z_iterN
+    first_epoch     :
+    second_epoch    :
+    third_epoch     :
+        ...
+        ...
+        ...
+    last_epoch      :
+
+
+
+    :param residual_history:
+    :param ephemeris_states_at_observation_times:
+    :return:
+
+    '''
+
+    observation_times = list(ephemeris_states_at_observation_times.keys())
+    number_of_iterations = len(residual_history[0, :])
+    N = 3 * number_of_iterations
+    new_residual_history = dict.fromkeys(observation_times)
+    for idx, epoch in enumerate(observation_times):
+        current_array = np.zeros(N)
+        for k in range(number_of_iterations):
+            current_array[3 * k:3 * (k + 1)] = residual_history[3 * idx:3 * (idx + 1), k]
+        new_residual_history[epoch] = current_array
+
+    return new_residual_history
+
+
+def norm_position_residuals(cartesian_residual_history: dict) -> dict:
+
+    epochs = list(cartesian_residual_history.keys())
+    normed_residual_history = dict.fromkeys(epochs)
+    number_of_iterations = int(len(cartesian_residual_history[epochs[0]]) / 3)
+
+    for epoch in epochs:
+        normed_residual_history[epoch] = np.zeros(number_of_iterations)
+        for iteration in range(number_of_iterations):
+            normed_residual_history[epoch][iteration] = norm(cartesian_residual_history[epoch][3*iteration:3*(iteration+1)])
+
+    return normed_residual_history
+
+
+def extract_orientation_residuals(residual_history: np.ndarray, observation_times: np.ndarray, number_of_iterations: float) -> dict:
+
+    warnings.warn('(extract_orientation_residuals): Function not yet implemented. Returning None.')
+
+    return
+
+
+def get_orientation_statistical_indicators_evolution(residual_history: dict) -> dict:
+
+    warnings.warn('(get_orientation_statistical_indicators_evolution): Function not yet implemented. Returning None.')
+
+    return
 
 
 def covariance_to_correlation(covariance_matrix: np.ndarray) -> np.ndarray:
@@ -239,7 +375,9 @@ def get_fourier_elements_from_history(result: dict,
     if clean_signal[0] != 0.0: signal = remove_jumps(signal, clean_signal[0])
     if clean_signal[1] != 0:
         coeffs = polyfit(sample_times, signal, clean_signal[1])
-        signal = signal - coeffs[0] - coeffs[1] * sample_times
+        for idx, current_coeff in enumerate(coeffs):
+            exponent = idx
+            signal = signal - current_coeff*sample_times**exponent
 
     n = len(sample_times)
     dt = sample_times[1] - sample_times[0]

@@ -44,29 +44,29 @@ phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, l
 # Execution
 verbose = True
 retrieve_dependent_variables = True
-save = False
+save = True
 simulate_and_save_full_dynamics = False
 generate_ephemeris_file = True
-check_undamped = False
-checks = [1, 1, 1, 1, 1, 1]
+check_undamped = True
+checks = [0, 0, 0, 0, 0, 0]
 
 ########################################################################################################################
 
 if sum(checks) > 0:
     retrieve_dependent_variables = True
 
-
 #                                  4h,  8h,  16h,  1d 8h, 2d 16h, 5d 8h, 10d 16h, 21d 8h, 42d 16h, 85d 8h, 170d 16h, 341d 8h  // Up to 3413d 8h in get_zero_proper_mode function
 dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0,  64.0,   128.0, 256.0,   512.0,  1024.0,  2048.0, 4096.0,   8192.0])*3600.0)  # In seconds.
-# dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0,  64.0])*3600.0)  # In seconds.
+# dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0,  64.0, 128.0, 256.0, 512.0, 1024.0])*3600.0)  # In seconds.
 
-if save:
-    save_dir = os.getcwd() + '/results-c/' + str(datetime.now()) + '/'
+if save or simulate_and_save_full_dynamics:
+    save_dir = os.getcwd() + '/simulation-results/model-c/' + str(datetime.now()) + '/'
     os.makedirs(save_dir)
 
 
 # CREATE YOUR UNIVERSE. MARS IS ALWAYS THE SAME, WHILE SOME ASPECTS OF PHOBOS ARE TO BE DEFINED IN A PER-MODEL BASIS.
-if verbose: print('Creating universe...')
+if verbose:
+    print('Creating universe...')
 bodies = get_solar_system('C')
 
 
@@ -83,10 +83,10 @@ propagator_settings = get_propagator_settings('C', bodies, initial_epoch, initia
 # SIMULATE DYNAMICS BACK AND FORTH AND OBTAIN DAMPED INITIAL STATE TOGETHER WITH A WHOLE BUNCH OF OTHER THINGS
 print('Simulating dynamics. Going into the depths of Tudat...')
 tic = time()
-damping_results = numerical_simulation.propagation.get_zero_proper_mode_rotational_state(bodies,
-                                                                                         propagator_settings,
-                                                                                         phobos_mean_rotational_rate,
-                                                                                         dissipation_times)
+damping_results = numerical_simulation.propagation.get_damped_proper_mode_initial_rotational_state(bodies,
+                                                                                                   propagator_settings,
+                                                                                                   phobos_mean_rotational_rate,
+                                                                                                   dissipation_times)
 tac = time()
 if verbose: print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
 
@@ -101,6 +101,7 @@ if save:
     save2txt(damping_results.forward_backward_states[0][0], save_dir + 'states-undamped.dat')
     if retrieve_dependent_variables:
         save2txt(damping_results.forward_backward_dependent_variables[0][0], save_dir + 'dependents-undamped.dat')
+
     for idx, current_damping_time in enumerate(dissipation_times):
         time_str = str(int(current_damping_time / 3600.0))
         save2txt(damping_results.forward_backward_states[idx+1][1], save_dir + 'states-d' + time_str + '.dat')
@@ -113,15 +114,24 @@ if save:
 if simulate_and_save_full_dynamics:
     if verbose: print('Simulating and saving full dynamics for all damping times...')
     tic = time()
-    for idx, current_damping_time in enumerate(dissipation_times):
+    time_str = str(int(dissipation_times[-1] / 3600.0))
+    save2txt(damping_results.forward_backward_states[-1][1], save_dir + 'states-d' + time_str + '-full.dat')
+    if retrieve_dependent_variables:
+        save2txt(damping_results.forward_backward_dependent_variables[-1][1], save_dir + 'dependents-d' + time_str +
+                 '-full.dat')
+    for idx, current_damping_time in enumerate(dissipation_times[:-1]):
         time_str = str(int(current_damping_time / 3600.0))
-        print('Simulation ' + str(idx + 1) + '/' + str(len(dissipation_times)))
-        current_initial_state = damping_results.forward_backward_states[idx][1][initial_epoch]
-        current_propagator_settings = get_propagator_settings('C', bodies, initial_epoch, current_initial_state, simulation_time, dependent_variables)
+        print('Simulation ' + str(idx+1) + '/' + str(len(dissipation_times[:-1])))
+        current_initial_epoch = list(damping_results.forward_backward_states[idx+1][1].keys())[-1]
+        current_initial_state = damping_results.forward_backward_states[idx+1][1][current_initial_epoch]
+        current_simulation_time = initial_epoch + simulation_time - current_initial_epoch
+        current_propagator_settings = get_propagator_settings('C', bodies, current_initial_epoch, current_initial_state, current_simulation_time, dependent_variables)
         current_simulator = numerical_simulation.create_dynamics_simulator(bodies, current_propagator_settings)
-        save2txt(current_simulator.state_history, save_dir + 'states-d' + time_str + '-full.dat')
+        full_state_history = damping_results.forward_backward_states[idx+1][1] | current_simulator.state_history
+        save2txt(full_state_history, save_dir + 'states-d' + time_str + '-full.dat')
         if retrieve_dependent_variables:
-            save2txt(current_simulator.dependent_variable_history, save_dir + 'dependents-d' + time_str + '-full.dat')
+            full_dependent_variable_history = damping_results.forward_backward_dependent_variables[idx+1][1] | current_simulator.dependent_variable_history
+            save2txt(full_dependent_variable_history, save_dir + 'dependents-d' + time_str + '-full.dat')
     tac = time()
     if verbose: print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
 
@@ -130,19 +140,21 @@ if simulate_and_save_full_dynamics:
 if generate_ephemeris_file:
     if verbose: print('Generating ephemeris file...')
     if not simulate_and_save_full_dynamics:
-        ephemeris_initial_state = damping_results.forward_backward_states[-1][1][initial_epoch]
-        ephemeris_propagator_settings = get_propagator_settings('C', bodies, initial_epoch, ephemeris_initial_state,
-                                                                simulation_time, dependent_variables)
+        ephemeris_initial_epoch = list(damping_results.forward_backward_states[-1][1].keys())[-1]
+        ephemeris_initial_state = damping_results.forward_backward_states[-1][1][ephemeris_initial_epoch]
+        ephemeris_simulation_time = initial_epoch + simulation_time - ephemeris_initial_epoch
+        ephemeris_propagator_settings = get_propagator_settings('C', bodies, ephemeris_initial_epoch, ephemeris_initial_state, ephemeris_simulation_time, dependent_variables)
         ephemeris_simulator = numerical_simulation.create_dynamics_simulator(bodies, ephemeris_propagator_settings)
-        ephemeris_history = ephemeris_simulator.state_history
-    else: ephemeris_history = current_simulator.state_history
-    eph_dir = os.getcwd() + '/ephemeris/'
-    save2txt(extract_elements_from_history(ephemeris_history, [0, 1, 2, 3, 4, 5]), eph_dir + 'translation-c.eph')
-    save2txt(extract_elements_from_history(ephemeris_history, [6, 7, 8, 9, 10, 11, 12]), eph_dir + 'rotation-c.eph')
+        ephemeris_state_history = damping_results.forward_backward_states[-1][1] | ephemeris_simulator.state_history
+    else: ephemeris_state_history = full_state_history
+    eph_dir = os.getcwd() + '/ephemeris/new/'
+    save2txt(extract_elements_from_history(ephemeris_state_history, [0, 1, 2, 3, 4, 5]), eph_dir + 'translation-c.eph')
+    save2txt(extract_elements_from_history(ephemeris_state_history, [6, 7, 8, 9, 10, 11, 12]), eph_dir + 'rotation-c.eph')
 
 
 # POST PROCESS / CHECKS - THIS IS ONLY POSSIBLE IF THE APPROPRIATE DEPENDENT VARIABLES ARE RETRIEVED.
-if retrieve_dependent_variables: run_model_b_checks(checks, bodies, damping_results, check_undamped)
+if retrieve_dependent_variables:
+    run_model_b_checks(checks, bodies, damping_results, check_undamped)
 
 
 print('PROGRAM COMPLETED SUCCESFULLY')

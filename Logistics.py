@@ -6,28 +6,6 @@ from tudatpy.io import save2txt
 TWOPI = 2*PI
 
 
-def norm_rows(array: np.ndarray) -> np.ndarray:
-    return np.array([np.linalg.norm(array[k,:]) for k in range(array.shape[0])])
-
-
-def norm_columns(array: np.ndarray) -> np.ndarray:
-    return np.array([np.linalg.norm(array[:,k]) for k in range(array.shape[1])])
-
-
-def norm_history(history: dict) -> dict:
-
-    epoch_list = list(history.keys())
-    normed_history = dict.fromkeys(epoch_list)
-    for epoch in epoch_list:
-        normed_history[epoch] = np.linalg.norm(history[epoch])
-
-    return normed_history
-
-
-def unit(x: np.ndarray) -> np.ndarray:
-    return x / np.linalg.norm(x)
-
-
 def str2vec(string: str, separator: str) -> np.ndarray:
     return np.array([float(element) for element in string.split(separator)])
 
@@ -334,23 +312,28 @@ def matrix_result_to_row_array(matrix_dict: dict, row_to_extract: int) -> np.nda
     return array_to_return
 
 
-def retrieve_ephemeris_files(model: str) -> tuple:
+def retrieve_ephemeris_files(model: str, use_new: bool = False) -> tuple:
+
+    if use_new:
+        extra = 'new/'
+    else:
+        extra = ''
 
     if model == 'S':
-        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/translation-s.eph'
+        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + extra + 'translation-s.eph'
         rotational_ephemeris_file = None
     elif model == 'A1':
-        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/translation-a.eph'
+        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + extra + 'translation-a.eph'
         rotational_ephemeris_file = None
     elif model == 'A2':
         translational_ephemeris_file = None
-        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/rotation-a.eph'
+        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + extra + 'rotation-a.eph'
     elif model == 'B':
-        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/translation-b.eph'
-        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/rotation-b.eph'
+        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + extra + 'translation-b.eph'
+        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + extra + 'rotation-b.eph'
     elif model == 'C':
-        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/translation-c.eph'
-        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/rotation-c.eph'
+        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + extra + 'translation-c.eph'
+        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + extra + 'rotation-c.eph'
     else:
         raise ValueError('Invalid observation model selected.')
 

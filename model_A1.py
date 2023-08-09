@@ -42,10 +42,10 @@ include_libration = True
 
 # Execution
 verbose = True
-retrieve_dependent_variables = False
-save = False
+retrieve_dependent_variables = True
+save = True
 generate_ephemeris_file = False
-checks = [1, 1, 1, 1, 1]
+checks = [0, 0, 0, 0, 0]
 
 ########################################################################################################################
 
@@ -69,8 +69,10 @@ bodies = get_solar_system(model)
 if verbose: print('Setting up propagation...')
 initial_epoch = 0.0
 initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'J2000', 'None', 0.0)
+initial_state = read_vector_history_from_file('ephemeris/new/translation-b.eph')[initial_epoch]
 simulation_time = 3500.0*constants.JULIAN_DAY
-if retrieve_dependent_variables: dependent_variables = get_list_of_dependent_variables(model, bodies)
+simulation_time = list(read_vector_history_from_file('ephemeris/new/translation-b.eph').keys())[-1]
+if retrieve_dependent_variables or generate_ephemeris_file: dependent_variables = get_list_of_dependent_variables(model, bodies)
 else: dependent_variables = []
 propagator_settings = get_propagator_settings(model, bodies, initial_epoch, initial_state, simulation_time, dependent_variables)
 
@@ -88,7 +90,7 @@ if save:
 
     if verbose: print('Saving results...')
     log = '\n· Model: ' + model + '\n· Initial epoch: ' + str(initial_epoch) + ' seconds\n· Simulation time: ' + \
-          str(simulation_time / constants.JULIAN_DAY) + ' days\n'
+          str(simulation_time / constants.JULIAN_DAY) + ' days\n' # · Integrator time step: ' + str(integrator_time_step) + ' seconds\n'
     with open(save_dir + 'log.log', 'w') as file: file.write(log)
     save2txt(simulator.state_history, save_dir + 'state-history.dat')
     if retrieve_dependent_variables:
@@ -100,16 +102,17 @@ if save:
 if generate_ephemeris_file:
 
     if verbose: print('Generating ephemeris file...')
-    eph_dir = os.getcwd() + '/ephemeris/'
-    if model == 'S': filename = 'translational-s.eph'
-    else: filename = 'translational-a.eph'
+    eph_dir = os.getcwd() + '/ephemeris/new/'
+    if model == 'S': filename = 'translation-s.eph'
+    else: filename = 'translation-a.eph'
     save2txt(simulator.state_history, eph_dir + filename)
+    save2txt(simulator.dependent_variable_history, eph_dir + 'associated-dependents/' + model.lower() + '.dat')
 
 
 # POST PROCESS / CHECKS
 if retrieve_dependent_variables:
-    # run_model_a1_checks(checks, bodies, simulator)
-    run_model_a1_checks([0, 0, 0, 1, 0], bodies, simulator)
+    run_model_a1_checks(checks, bodies, simulator)
+    # run_model_a1_checks([1, 1, 1, 1, 1], bodies, simulator)
 
 
 print('PROGRAM FINISHED SUCCESSFULLY')
