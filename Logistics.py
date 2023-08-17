@@ -338,3 +338,19 @@ def retrieve_ephemeris_files(model: str, use_new: bool = False) -> tuple:
         raise ValueError('Invalid observation model selected.')
 
     return translational_ephemeris_file, rotational_ephemeris_file
+
+
+def get_itc(parameter_evolution: dict[float, np.ndarray]) -> int:
+
+    number_of_iterations = int(len(list(parameter_evolution.keys()))-1)
+
+    itc = -1
+    for k in range(number_of_iterations):
+        parameter_changes = 100.0*abs(parameter_evolution[k+1] / parameter_evolution[k] - 1.0)
+        if sum(parameter_changes < 1e-3):
+            itc = k
+            break
+    if itc == -1:
+        itc = number_of_iterations
+
+    return itc

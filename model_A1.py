@@ -44,7 +44,7 @@ include_libration = True
 verbose = True
 retrieve_dependent_variables = True
 save = True
-generate_ephemeris_file = False
+generate_ephemeris_file = True
 checks = [0, 0, 0, 0, 0]
 
 ########################################################################################################################

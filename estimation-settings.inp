@@ -8,7 +8,7 @@
 
 · ESTIMATION MODEL: 			A1
 · INITIAL ESTIMATION EPOCH:		1.0 YEAR
-· DURATION OF ESTIMATED ARC:	30.0 DAY
+· DURATION OF ESTIMATED ARC:	1.0, 7.0, 14.0, 21.0, 30.0, 45.0, 60.0, 75.0, 90.0 DAY
 · ESTIMATED PARAMETERS:			initial state, C20, C22  	# Options: initial state, A, C20 or C22, or a combination thereof (for example "initial state, A" or "initial state, C20").
 · NORM POSITION RESIDUALS:		True
 · CONVERT RESIDUALS TO RSW:		True
@@ -39,7 +39,7 @@
 ####    POST PROCESSING SETTGINS    ####
 ########################################
 
-· POST PROCESS IN PRESENT RUN: 		True
+· POST PROCESS IN PRESENT RUN: 		False
 · PLOT OBSERVATIONS:				True
 · PLOT CARTESIAN RESIDUALS:			False
 · PLOT NORMED RESIDUALS:			True

@@ -144,15 +144,15 @@ def quaternion_to_matrix_history(quaternion_history: dict) -> dict:
     return rotation_matrix_history
 
 
-def average_mean_motion_over_integer_number_of_orbits(keplerian_history: dict, gravitational_parameter: float) -> float | tuple:
+def average_over_integer_number_of_orbits(quantity_history: np.ndarray, reference_keplerian_history: np.ndarray) -> float | tuple:
 
-    mean_motion_history = mean_motion_history_from_keplerian_history(keplerian_history, gravitational_parameter)
-    periapses = get_periapses(keplerian_history)
+    # mean_motion_history = mean_motion_history_from_keplerian_history(keplerian_history, gravitational_parameter)
+    periapses = get_periapses(reference_keplerian_history)
     first_periapsis = periapses[0][0]
     last_periapsis = periapses[-1][0]
-    mean_motion_over_integer_number_of_orbits = np.array(list(mean_motion_history.values())[first_periapsis:last_periapsis])
+    quantity_over_integer_number_of_orbits = quantity_history[first_periapsis:last_periapsis,1:]
 
-    return np.mean(mean_motion_over_integer_number_of_orbits), len(periapses)
+    return np.mean(quantity_over_integer_number_of_orbits, axis = 0), len(periapses)
 
 
 '''
@@ -225,45 +225,56 @@ def save_initial_states(damping_results: numerical_simulation.propagation.Rotati
     return
 
 
+def print_estimated_parameters(estimated_parameters: list[str]) -> str:
+
+    parameters_str = ''
+
+    if 'initial state' in estimated_parameters:
+        parameters_str = parameters_str + '\t- Initial state\n'
+    if 'A' in estimated_parameters:
+        parameters_str = parameters_str + '\t- Libration amplitude\n'
+    if 'C20' in estimated_parameters and 'C22' in estimated_parameters:
+        parameters_str = parameters_str + '\t- C20\n'
+        parameters_str = parameters_str + '\t- C22\n'
+    elif 'C20' in estimated_parameters:
+        parameters_str = parameters_str + '\t- C20\n'
+    elif 'C22' in estimated_parameters:
+        parameters_str = parameters_str + '\t- C22\n'
+
+    print('\nParameters to be estimated:\n' + parameters_str)
+
+    return parameters_str
+
+
 def get_parameter_set(estimated_parameters: list[str],
                       bodies: numerical_simulation.environment.SystemOfBodies,
                       propagator_settings: propagation_setup.propagator.PropagatorSettings | None = None,
                       return_only_settings_list: bool = True) -> tuple:
 
     parameter_settings = []
-    parameters_str = ''
 
     if propagator_settings is not None:
         parameter_settings = estimation_setup.parameter.initial_states(propagator_settings, bodies)
-        parameters_str = parameters_str + '\t- Initial state\n'
     else:
         raise ValueError('(get_parameter_set): Propagator settings required but not provided.')
 
     if 'A' in estimated_parameters:
         parameter_settings = parameter_settings + [estimation_setup.parameter.scaled_longitude_libration_amplitude('Phobos')]
-        parameters_str = parameters_str + '\t- Libration amplitude\n'
-        # warnings.warn('Libration amplitude selected as parameter to estimate, but not exposed to Python yet.')
-        # # AQUÍ ME FALTA EXPONER LA LIBRATION AMPLITUDE COMO ESTIMATABLE PARAMETER (CREO)
-        # pass
     if 'C20' in estimated_parameters and 'C22' in estimated_parameters:
         parameter_settings = parameter_settings + [
             estimation_setup.parameter.spherical_harmonics_c_coefficients_block('Phobos', [(2, 0), (2, 2)])]
-        parameters_str = parameters_str + '\t- C20\n'
-        parameters_str = parameters_str + '\t- C22\n'
     elif 'C20' in estimated_parameters:
         parameter_settings = parameter_settings + [
             estimation_setup.parameter.spherical_harmonics_c_coefficients_block('Phobos', [(2, 0)])]
-        parameters_str = parameters_str + '\t- C20\n'
     elif 'C22' in estimated_parameters:
         parameter_settings = parameter_settings + [
             estimation_setup.parameter.spherical_harmonics_c_coefficients_block('Phobos', [(2, 2)])]
-        parameters_str = parameters_str + '\t- C22\n'
 
     if return_only_settings_list:
-        return parameter_settings, parameters_str
+        return parameter_settings
     else:
         parameters_to_estimate = estimation_setup.create_parameter_set(parameter_settings, bodies)
-        return parameters_to_estimate, parameters_str
+        return parameters_to_estimate
 
 
 class EstimationSettings:
@@ -281,11 +292,13 @@ class EstimationSettings:
         self.read_settings_from_file()
         self.run_diagnostics_on_settings()
 
-        self.observation_settings['observation times'] = self.get_observation_times()
+        self.number_of_estimations = len(self.estimation_settings['duration of estimated arc'])
 
         return
 
     def read_settings_from_file(self) -> None:
+
+        offset_last = False  # Leave this as is. You will see the point of it down below.
 
         with open(self.source_file, 'r') as file: all_lines = [line for line in file.readlines() if line != '\n']
 
@@ -301,17 +314,29 @@ class EstimationSettings:
             if ':' in line:
 
                 dict_key = line.split(':')[0].removeprefix('· ').lower()
-                dict_value = line.split('#')[0]
+                dict_value = line.split('#')[0]  # Take everything that is NOT a comment
                 while dict_value[-1] == ' ' or dict_value[-1] == '\t': dict_value = dict_value[:-1]  # Remove all trailing spaces or tabs
-                dict_value = dict_value.split(':')[1].removesuffix('\n').replace('\t', '')
+                dict_value = dict_value.split(':')[1].removesuffix('\n').replace('\t', '')  # Take the value itself (everything after the colon).
                 while dict_value[0] == ' ' or dict_value[0] == '\t': dict_value = dict_value[1:]  # Remove all preceding spaces or tabs
 
                 # A SPECIAL CASE HERE IS THAT THERE IS A UNIT IN THE INPUT (MINUTE, DAY, YEAR, ...)
                 if 'YEAR' in dict_value or 'DAY' in dict_value or 'HOUR' in dict_value or 'MINUTE' in dict_value or \
                     'SECOND' in dict_value:
 
-                    value = float(dict_value.removeprefix(' ').split(' ')[0])
-                    unit = dict_value.split(' ')[1]
+                    # There are four settings that enter this "if" clause:
+                    #   ESTIMATION INITIAL EPOCH
+                    #   DURATION OF ESTIMATED ARC
+                    #   EPOCH OF FIRST OBSERVATION
+                    #   EPOCH OF LAST OBSERVATION
+                    # Usually, these are a scalar followed by the unit. But DURATION OF ESTIMATED ARC might be a sequence of scalars.
+                    # Thus, the following try-except will discriminate this particular case.
+                    unit = dict_value.split(' ')[-1]  # This is the unit itself
+                    if 'OFFSET' in unit:
+                        unit = dict_value.split(' ')[-2]  # This is the unit itself
+                    try:
+                        value = float(dict_value.removeprefix(' ').split(' ')[0])  # This is the case where it is a float.
+                    except:
+                        value = np.array([float(element) for element in dict_value.removesuffix(' ' + unit).split(', ')]) # This is an array with all values.
 
                     if 'SECOND' in unit: factor = 1.0
                     elif 'MINUTE' in unit: factor = 60.0
@@ -327,6 +352,7 @@ class EstimationSettings:
                         if dict_key == 'epoch of last observation':
                             self.observation_settings[dict_key] = self.estimation_settings['initial estimation epoch'] + \
                                                                   self.estimation_settings['duration of estimated arc'] + value
+                            offset_last = True
                     else:
                         dicts[dict_idx][dict_key] = value
 
@@ -356,6 +382,18 @@ class EstimationSettings:
             int(self.ls_convergence_settings['maximum number of iterations'])
         self.ls_convergence_settings['number of iterations without improvement'] = \
             int(self.ls_convergence_settings['number of iterations without improvement'])
+
+        if type(self.estimation_settings['estimated parameters']) != list:
+            self.estimation_settings['estimated parameters'] = [self.estimation_settings['estimated parameters']]
+
+        if type(self.estimation_settings['duration of estimated arc']) == float:
+            self.estimation_settings['duration of estimated arc'] = [self.estimation_settings['duration of estimated arc']]
+            if offset_last:
+                self.observation_settings['epoch of last observation'] = [self.observation_settings['epoch of last observation']]
+        else:
+            self.estimation_settings['duration of estimated arc'] = list(self.estimation_settings['duration of estimated arc'])
+            if offset_last:
+                self.observation_settings['epoch of last observation'] = list(self.observation_settings['epoch of last observation'])
 
         return
 
@@ -388,21 +426,21 @@ class EstimationSettings:
                                                                          'estimation of the libration amplitude')
 
         t0_e = self.estimation_settings['initial estimation epoch']
-        tf_e = self.estimation_settings['initial estimation epoch'] + self.estimation_settings['duration of estimated arc']
+        tf_e = self.estimation_settings['initial estimation epoch'] + np.array(self.estimation_settings['duration of estimated arc'])
         t0_o = self.observation_settings['epoch of first observation']
-        tf_o = self.observation_settings['epoch of last observation']
+        tf_o = np.array(self.observation_settings['epoch of last observation'])
         params = self.estimation_settings['estimated parameters']
 
-        if tf_o <= t0_o:
-            raise ValueError('The epoch of the last observation is lower than (or equal to) the epoch of the first '
+        if sum(tf_o <= t0_o):
+            raise ValueError('(Some of) the epoch(s) of the last observation is/are lower than (or equal to) the epoch of the first '
                              'observation.')
 
-        if tf_e <= tf_o:
-            warnings.warn('Your initial estimation epoch is greater than (or equal to) your final estimation epoch. '
+        if sum(tf_e <= tf_o):
+            warnings.warn('(Some of) your initial estimation epoch(s) is greater than (or equal to) your final estimation epoch. '
                           'This will cause the propagation of your equations of motion and variational equations to run'
                           ' backwards. The "initial state" will be that at the final epoch.')
 
-        if t0_o < t0_e or tf_o > tf_e:
+        if t0_o < t0_e or sum(tf_o > tf_e):
             warnings.warn('Some of your observations are outside your estimation period. They will be ignored.')
 
         if 'A' in params and 'C20' in params: ill_posedness = True
@@ -426,34 +464,67 @@ class EstimationSettings:
 
         return
 
-    def get_observation_times(self) -> list[float]:
+    def batch_to_single_run(self, duration_idx: int) -> list[str]:
 
-        N = int((self.observation_settings['epoch of last observation'] - \
+        with open(self.source_file, 'r') as file:
+            file_lines = file.readlines()
+
+        estimation_duration = self.estimation_settings['duration of estimated arc'][duration_idx]
+        if estimation_duration % 86400.0 == 0.0:
+            estimation_duration = estimation_duration / 86400.0
+            day = True
+        else:
+            day = False
+
+        for idx, line in enumerate(file_lines):
+            if 'DURATION OF ESTIMATED ARC' in line:
+                things = line.split(':\t')
+                things[1] = str(estimation_duration)
+                if day:
+                    things[1] = things[1] + ' DAY\n'
+                file_lines[idx] = ':\t'.join(things)
+
+        return file_lines
+
+    def get_length_of_estimated_state(self) -> int:
+
+        if self.estimation_settings['estimation model'] in ['S', 'A1']:
+            length_of_estimated_state = 6
+        elif self.estimation_settings['estimation model'] == 'A2':
+            length_of_estimated_state = 7
+        else:
+            length_of_estimated_state = 13
+
+        return length_of_estimated_state
+
+    def get_observation_times(self, estimation_idx: int) -> list[float]:
+
+        N = int((self.observation_settings['epoch of last observation'][estimation_idx] - \
                  self.observation_settings['epoch of first observation']) / \
                 self.observation_settings['observation frequency']) + 1
 
         observation_times = np.linspace(self.observation_settings['epoch of first observation'],
-                                        self.observation_settings['epoch of last observation'],
+                                        self.observation_settings['epoch of last observation'][estimation_idx],
                                         N)
 
         return observation_times
 
-    def get_full_state_at_observation_times(self) -> dict[float, np.ndarray]:
+    def get_full_state_at_observation_times(self, estimation_idx: int) -> dict[float, np.ndarray]:
 
-        state_history_at_observation_times = dict.fromkeys(self.observation_settings['observation times'])
+        state_history_at_observation_times = dict.fromkeys(self.get_observation_times(estimation_idx))
 
         model = self.observation_settings['observation model'][0].lower()
         ephemeris_file = 'ephemeris/translation-' + model + '.eph'
         state_history = create_vector_interpolator(read_vector_history_from_file(ephemeris_file))
 
-        for epoch in self.observation_settings['observation times']:
+        for epoch in self.get_observation_times(estimation_idx):
             state_history_at_observation_times[epoch] = state_history.interpolate(epoch)
 
         return state_history_at_observation_times
 
     def get_estimation_type(self) -> str | None:
 
-        estimation_type = None
+        estimation_type = ''
         obs = self.observation_settings['observation type']
         params = self.estimation_settings['estimated parameters']
         model = self.estimation_settings['estimation model']
@@ -605,7 +676,7 @@ class EstimationSettings:
                     true_initial_state = true_initial_state[6:]
                 true_parameters = true_parameters + list(true_initial_state)
             elif parameter == 'A':
-                true_parameters = true_parameters + [1.1]
+                true_parameters = true_parameters + [2.695220284671387]
             elif parameter == 'C20':
                 true_parameters = true_parameters + [-0.029243]
             elif parameter == 'C22':
@@ -855,11 +926,14 @@ def get_list_of_dependent_variables(model: str, bodies: numerical_simulation.env
     if model in ['S', 'A1']:
         mutual_spherical = propagation_setup.acceleration.mutual_spherical_harmonic_gravity_type
         mars_acceleration_dependent_variable = propagation_setup.dependent_variable.single_acceleration_norm(mutual_spherical, 'Phobos', 'Mars')
+        equator = MarsEquatorOfDate(bodies)
         euler_angles_wrt_mars_equator_dependent_variable = \
-            propagation_setup.dependent_variable.custom_dependent_variable(MarsEquatorOfDate(bodies).get_euler_angles_wrt_mars_equator, 3)
+            propagation_setup.dependent_variable.custom_dependent_variable(equator.get_euler_angles_wrt_mars_equator, 3)
+        keplerian_state_wrt_mars = \
+            propagation_setup.dependent_variable.custom_dependent_variable(equator.keplerian_state_in_mars_reference_frame, 6)
         dependent_variables_to_save = [ euler_angles_wrt_mars_equator_dependent_variable,  # 0, 1, 2
                                         propagation_setup.dependent_variable.central_body_fixed_spherical_position('Mars', 'Phobos'),  # 3, 4, 5
-                                        propagation_setup.dependent_variable.keplerian_state('Phobos', 'Mars'),  # 6, 7, 8, 9, 10, 11
+                                        keplerian_state_wrt_mars,  # 6, 7, 8, 9, 10, 11
                                         propagation_setup.dependent_variable.central_body_fixed_spherical_position('Phobos', 'Mars'),  # 12, 13, 14
                                         acceleration_norm_from_body_on_phobos('Sun'), # 15
                                         acceleration_norm_from_body_on_phobos('Earth'),  # 16
@@ -869,11 +943,14 @@ def get_list_of_dependent_variables(model: str, bodies: numerical_simulation.env
                                         ]
 
     elif model in ['A2', 'B', 'C']:
+        equator = MarsEquatorOfDate(bodies)
         euler_angles_wrt_mars_equator_dependent_variable = \
-            propagation_setup.dependent_variable.custom_dependent_variable(MarsEquatorOfDate(bodies).get_euler_angles_wrt_mars_equator, 3)
+            propagation_setup.dependent_variable.custom_dependent_variable(equator.get_euler_angles_wrt_mars_equator, 3)
+        keplerian_state_wrt_mars = \
+            propagation_setup.dependent_variable.custom_dependent_variable(equator.keplerian_state_in_mars_reference_frame, 6)
         dependent_variables_to_save = [euler_angles_wrt_mars_equator_dependent_variable,  # 0, 1, 2
                                        propagation_setup.dependent_variable.central_body_fixed_spherical_position('Mars', 'Phobos'),  # 3, 4, 5
-                                       propagation_setup.dependent_variable.keplerian_state('Phobos', 'Mars'),  # 6, 7, 8, 9, 10, 11
+                                       keplerian_state_wrt_mars,  # 6, 7, 8, 9, 10, 11
                                        propagation_setup.dependent_variable.central_body_fixed_spherical_position('Phobos', 'Mars'),  # 12, 13, 14
                                        propagation_setup.dependent_variable.relative_position('Phobos', 'Mars')  # 15, 16, 17
                                        ]
@@ -992,7 +1069,9 @@ def get_solar_system(model: str,
         if 'libration_amplitude' in additional_inputs:
             scaled_amplitude = abs(2.0 - additional_inputs['libration_amplitude']) / 0.015034167790105173
         else:
-            scaled_amplitude = 2.695220284671387  # Directly computed in a numerical way from model B.
+            # scaled_libration_amplitude = scaled_libration_amplitude_from_dependent_variable_history('')
+            scaled_amplitude = 2.695220284671387  # Directly computed in a numerical way from model B. (RKF10(12) dt = 5min)
+            scaled_amplitude = 2.6952203863816266 # Directly computed in a numerical way from model B. (RKDP7(8) dt = 4.5min)
         bodies.get('Phobos').rotation_model.libration_calculator = numerical_simulation.environment.DirectLongitudeLibrationCalculator(scaled_amplitude)
 
     return bodies
@@ -1037,8 +1116,8 @@ def get_propagator_settings(model: str,
     central_bodies = ['Mars']
 
     # THE INTEGRATOR IS GOING TO BE THE SAME FOR ALL MODELS. LET'S JUST CREATE IT THE FIRST.
-    time_step = 300.0  # These are 300s = 5min
-    time_setp = 270.0  # These are 270s = 4.5min
+    # time_step = 300.0  # These are 300s = 5min
+    time_step = 270.0  # These are 270s = 4.5min
     coefficients = propagation_setup.integrator.CoefficientSets.rkdp_87
     integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(time_step,
                                                                                       coefficients,
@@ -1777,21 +1856,21 @@ def plot_kepler_elements(keplerian_history: dict, title: str = None) -> None:
     ax2.set_title('Eccentricity')
     ax2.grid()
     # Inclination
-    i = result2array(extract_elements_from_history(keplerian_history, 2))[:, 1]
+    i = result2array(extract_elements_from_history(keplerian_history, 3))[:, 1]
     ax3.plot(epochs_array / 86400.0, i * 360.0 / TWOPI)
     ax3.set_xlabel('Time [days since J2000]')
     ax3.set_ylabel(r'$i$ [º]')
     ax3.set_title('Inclination')
     ax3.grid()
     # Righ-ascension of ascending node
-    RAAN = result2array(extract_elements_from_history(keplerian_history, 4))[:, 1]
+    RAAN = result2array(extract_elements_from_history(keplerian_history, 2))[:, 1]
     ax4.plot(epochs_array / 86400.0, RAAN * 360.0 / TWOPI)
     ax4.set_xlabel('Time [days since J2000]')
     ax4.set_ylabel(r'$\Omega$ [º]')
     ax4.set_title('RAAN')
     ax4.grid()
     # Argument of periapsis
-    omega = result2array(extract_elements_from_history(keplerian_history, 3))[:, 1]
+    omega = result2array(extract_elements_from_history(keplerian_history, 4))[:, 1]
     ax5.plot(epochs_array / 86400.0, omega * 360.0 / TWOPI)
     ax5.set_xlabel('Time [days since J2000]')
     ax5.set_ylabel(r'$\omega$ [º]')
@@ -1857,6 +1936,7 @@ class MarsEquatorOfDate():
         self.W = np.radians(176.049863)
 
         self.phobos = bodies.get('Phobos')
+        self.mars = bodies.get('Mars')
 
         self.mars_to_j2000_rotation = self.get_mars_to_J2000_rotation_matrix()
         self.j2000_to_mars_rotation = self.mars_to_j2000_rotation.T
@@ -1870,6 +1950,18 @@ class MarsEquatorOfDate():
         phi = bring_inside_bounds(self.W, 0.0, TWOPI)
 
         return euler_angles_to_rotation_matrix(np.array([psi, theta, phi]))
+
+    def keplerian_state_in_mars_reference_frame(self) -> np.ndarray:
+
+        keplerian_state_in_earth_equator = cartesian_to_keplerian(self.phobos.state, self.mars.gravitational_parameter)
+        orbit_angles_in_j2000 = np.array([keplerian_state_in_earth_equator[4], # RAAN
+                                          keplerian_state_in_earth_equator[2], # Inclination
+                                          keplerian_state_in_earth_equator[3]]) # Argument of periapsis
+        orbit_angles_in_mars_equator = self.rotate_euler_angles_from_J2000_to_mars_equator(orbit_angles_in_j2000)
+        keplerian_state_in_mars_equator = keplerian_state_in_earth_equator.copy()
+        keplerian_state_in_mars_equator[2:5] = orbit_angles_in_mars_equator
+
+        return keplerian_state_in_mars_equator
 
     def get_euler_angles_wrt_mars_equator(self) -> np.ndarray:
 
@@ -1894,14 +1986,15 @@ def get_observation_history(observation_times: list[float],
 
 
 def extract_estimation_output(estimation_output: numerical_simulation.estimation.EstimationOutput,
-                              estimation_settings: EstimationSettings) -> tuple:
+                              estimation_settings: EstimationSettings,
+                              estimation_idx: int) -> tuple:
 
-    observation_times = estimation_settings.observation_settings['observation times']
+    observation_times = estimation_settings.get_observation_times(estimation_idx)
     residual_type = estimation_settings.observation_settings['observation type']
     norm_position = estimation_settings.estimation_settings['norm position residuals']
     residuals_to_rsw = estimation_settings.estimation_settings['convert residuals to rsw']
 
-    ephemeris_states_at_observation_times = estimation_settings.get_full_state_at_observation_times()
+    ephemeris_states_at_observation_times = estimation_settings.get_full_state_at_observation_times(estimation_idx)
 
     if residual_type not in ['position', 'orientation']:
         raise ValueError('(extract_estimation_output): Invalid residual type. Only "position" and "orientation" are '

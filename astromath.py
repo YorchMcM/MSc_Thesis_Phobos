@@ -387,12 +387,12 @@ def get_fourier_elements_from_history(result: dict,
     return frequencies, amplitudes
 
 
-def get_periapses(keplerian_history: dict) -> list:
+def get_periapses(keplerian_history: np.ndarray) -> list:
 
-    epochs_list = list(keplerian_history.keys())
+    epochs_list = keplerian_history[:,0]
     peri = [[None]*2]*len(epochs_list)
 
-    true_anomaly = result2array(extract_elements_from_history(keplerian_history, [-1]))
+    true_anomaly = keplerian_history[:,[0,-1]]
     true_anomaly[:,1] = remove_jumps(true_anomaly[:,1], TWOPI)
 
     for idx in range(len(epochs_list[:-1])):

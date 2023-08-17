@@ -150,6 +150,8 @@ if generate_ephemeris_file:
     eph_dir = os.getcwd() + '/ephemeris/new/'
     save2txt(extract_elements_from_history(ephemeris_state_history, [0, 1, 2, 3, 4, 5]), eph_dir + 'translation-c.eph')
     save2txt(extract_elements_from_history(ephemeris_state_history, [6, 7, 8, 9, 10, 11, 12]), eph_dir + 'rotation-c.eph')
+    if retrieve_dependent_variables:
+        save2txt(damping_results.forward_backward_dependent_variables[-1][1], eph_dir + '/associated-dependents/c.dat')
 
 
 # POST PROCESS / CHECKS - THIS IS ONLY POSSIBLE IF THE APPROPRIATE DEPENDENT VARIABLES ARE RETRIEVED.
