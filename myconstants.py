@@ -2,7 +2,7 @@ from numpy import pi as PI
 from numpy import sqrt
 from tudatpy.kernel import constants
 from Logistics import read_vector_history_from_file, extract_elements_from_history
-from Auxiliaries import average_mean_motion_over_integer_number_of_orbits, get_synodic_period
+from Auxiliaries import average_mean_motion_over_integer_number_of_orbits, get_synodic_period, default_phobos_mean_rotational_rate
 TWOPI = 2*PI
 
 dependents = read_vector_history_from_file('a1-dependent-variables-3500.txt')
@@ -30,5 +30,5 @@ mars_earth_frequency = TWOPI / mars_earth_synodic_period
 mars_jupiter_frequency = TWOPI / mars_jupiter_synodic_period
 
 # OTHERS
-phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, longitude slope goes down)
+phobos_mean_rotational_rate = default_phobos_mean_rotational_rate  # In rad/s (more of this number, longitude slope goes down)
 normal_mode = 0.00011542198506841888

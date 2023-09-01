@@ -11,7 +11,7 @@ from Auxiliaries import *
 from tudatpy.kernel.astro.element_conversion import cartesian_to_spherical
 
 
-def get_fourier(time_history: np.ndarray, clean_signal: list = [0.0, 0]) -> tuple:
+def fourier_transform(time_history: np.ndarray, clean_signal: list = [0.0, 0]) -> tuple:
 
     """This function computes the fast fourier transform of a provided time history. It assumes that the quantity of the time history is real, and calls Numpy's rfft function to compute it. This function complements Numpy's rfft in the following ways:
 
@@ -37,11 +37,11 @@ def get_fourier(time_history: np.ndarray, clean_signal: list = [0.0, 0]) -> tupl
     """
 
     if type(clean_signal[1]) != int:
-        raise TypeError('(get_fourier): Invalid input. The second entry in clean_signal should be of type "int". A type ' + str(type(clean_signal[1])) + 'was provided.')
+        raise TypeError('(fourier_transform): Invalid input. The second entry in clean_signal should be of type "int". A type ' + str(type(clean_signal[1])) + 'was provided.')
     if clean_signal[1] < 0:
-        raise ValueError('(get_fourier): Invalid input. The second entry in clean_signal cannot be negative. Current values is ' + str(clean_signal[1]) + '.')
+        raise ValueError('(fourier_transform): Invalid input. The second entry in clean_signal cannot be negative. Current values is ' + str(clean_signal[1]) + '.')
     if clean_signal[0] < 0.0:
-        raise ValueError('(get_fourier): Invalid input. The first entry in clean_signal cannot be negative. Current values is ' + str(clean_signal[1]) + '.')
+        raise ValueError('(fourier_transform): Invalid input. The first entry in clean_signal cannot be negative. Current values is ' + str(clean_signal[1]) + '.')
 
     sample_times = time_history[:,0]
     signal = time_history[:,1]
@@ -68,44 +68,48 @@ def get_fourier(time_history: np.ndarray, clean_signal: list = [0.0, 0]) -> tupl
 # save_dir = os.getcwd() + '/initial-guess-analysis/'
 color1, color2, color3, color4 = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E']
 
-average_mean_motion = 0.00022785636553897436
-bodies = get_solar_system('A2', 'ephemeris/translation-c.eph', 'ephemeris/rotation-c.eph')
-normal_mode = get_longitudinal_normal_mode_from_inertia_tensor(bodies.get('Phobos').inertia_tensor, average_mean_motion)
-# R = MarsEquatorOfDate(bodies).j2000_to_mars_rotation
-# full_state_rotation = np.concatenate((np.concatenate((R, np.zeros([3, 3])), 1), np.concatenate((np.zeros([3, 3]), R), 1)), 0)
-# mu_mars = bodies.get('Mars').gravitational_parameter
+# average_mean_motion = 0.00022785636553897436
+# bodies = get_solar_system('A2', 'ephemeris/translation-c.eph', 'ephemeris/rotation-c.eph')
+# normal_mode = get_longitudinal_normal_mode_from_inertia_tensor(bodies.get('Phobos').inertia_tensor, average_mean_motion)
+# # R = MarsEquatorOfDate(bodies).j2000_to_mars_rotation
+# # full_state_rotation = np.concatenate((np.concatenate((R, np.zeros([3, 3])), 1), np.concatenate((np.zeros([3, 3]), R), 1)), 0)
+# # mu_mars = bodies.get('Mars').gravitational_parameter
+#
+# # trajectory = read_vector_history_from_file('ephemeris/new/translation-b.eph')
+# dependents = read_vector_history_from_file('ephemeris/new/associated-dependents/b.dat')
+# dependents_array = dict2array(dependents)
+#
+# # reduced_dependents_array = dependents_array[dependents_array[:,0] <= 86400.0 * 30.0]
+# reduced_dependents_array = dependents_array[dependents_array[:,0] <= dependents_array[-1,0]]
 
-# trajectory = read_vector_history_from_file('ephemeris/new/translation-b.eph')
-dependents = read_vector_history_from_file('ephemeris/new/associated-dependents/b.dat')
-dependents_array = result2array(dependents)
-
-# reduced_dependents_array = dependents_array[dependents_array[:,0] <= 86400.0 * 30.0]
-reduced_dependents_array = dependents_array[dependents_array[:,0] <= dependents_array[-1,0]]
-phi = reduced_dependents_array[:,[0,3]]
-phi[:,1] = remove_jumps(phi[:,1], TWOPI)
-coeffs = np.polyfit(phi[:,0], phi[:,1], 1)
-physical_libration = phi.copy()
-physical_libration[:,1] = physical_libration[:,1] - (coeffs[1] + coeffs[0] * phi[:,0])
-tidal_libration = reduced_dependents_array[:,[0,6]]
-raan = reduced_dependents_array[:,[0,9]]
-coeffs = np.polyfit(raan[:,0], raan[:,1], 1)
-non_secular_raan = raan.copy()
-non_secular_raan[:,1] = non_secular_raan[:,1] - (coeffs[1] + coeffs[0]*non_secular_raan[:,0])
-clean_physical_libration = physical_libration.copy()
-clean_physical_libration[:,1] = physical_libration[:,1] + non_secular_raan[:,1]
-
-physical_libration_frequency, physical_libration_amplitude = get_fourier(physical_libration)
-clean_physical_libration_frequency, clean_physical_libration_amplitude = get_fourier(clean_physical_libration)
-tidal_libration_frequency, tidal_libration_amplitude = get_fourier(tidal_libration)
-raan_frequency, raan_amplitude = get_fourier(raan)
-non_secular_raan_frequency, non_secular_raan_amplitude = get_fourier(non_secular_raan)
+####################################################################################################################################
+# phi = reduced_dependents_array[:,[0,3]]
+# phi[:,1] = remove_jumps(phi[:,1], TWOPI)
+# coeffs = np.polyfit(phi[:,0], phi[:,1], 1)
+# physical_libration = phi.copy()
+# physical_libration[:,1] = physical_libration[:,1] - (coeffs[1] + coeffs[0] * phi[:,0])
+# physical_libration_from_euler_angle = physical_libration.copy()
+# tidal_libration = reduced_dependents_array[:,[0,6]]
+# raan = reduced_dependents_array[:,[0,9]]
+# coeffs = np.polyfit(raan[:,0], raan[:,1], 1)
+# non_secular_raan = raan.copy()
+# non_secular_raan[:,1] = non_secular_raan[:,1] - (coeffs[1] + coeffs[0]*non_secular_raan[:,0])
+# clean_physical_libration = physical_libration.copy()
+# clean_physical_libration[:,1] = physical_libration[:,1] + non_secular_raan[:,1]
+#
+# physical_libration_frequency, physical_libration_amplitude = fourier_transform(physical_libration)
+# clean_physical_libration_frequency, clean_physical_libration_amplitude = fourier_transform(clean_physical_libration)
+# tidal_libration_frequency, tidal_libration_amplitude = fourier_transform(tidal_libration)
+# raan_frequency, raan_amplitude = fourier_transform(raan)
+# non_secular_raan_frequency, non_secular_raan_amplitude = fourier_transform(non_secular_raan)
+################################################################################################################################
 # continuous_phi = remove_jumps(phi, TWOPI)
 # coeffs = np.polyfit(reduced_dependents_array[:,0], continuous_phi, 2)
 # res = continuous_phi - (coeffs[2] + coeffs[1] * reduced_dependents_array[:,0] + coeffs[0]*reduced_dependents_array[:,0]**2)
 # residual_history = np.zeros([len(reduced_dependents_array), 2])
 # residual_history[:,0] = reduced_dependents_array[:,0]
 # residual_history[:,1] = res
-# residual_frequency, residual_amplitude = get_fourier(residual_history)
+# residual_frequency, residual_amplitude = fourier_transform(residual_history)
 # fourier_reconstruction = np.zeros(len(residual_history))
 # for k in range(len(residual_frequency)):
 #     fourier_reconstruction = fourier_reconstruction + residual_amplitude[k]*np.sin(residual_frequency[k]*reduced_dependents_array[:,0])
@@ -135,106 +139,198 @@ non_secular_raan_frequency, non_secular_raan_amplitude = get_fourier(non_secular
 # plt.xlabel(r'$\omega$ [rad/s]')
 # plt.ylabel(r'$A$ [rad]')
 # plt.title('Residual frequency content')
+#####################################################################################################################################################
 
-plt.figure()
-plt.plot(physical_libration[:,0] / 86400.0, physical_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'Physical libration, $\tau$')
-plt.plot(tidal_libration[:,0] / 86400.0, tidal_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'Tidal libration, $\psi$')
-plt.grid()
-plt.legend()
-plt.xlabel('Time since J2000 [days]')
-plt.ylabel(r'$\alpha$ [º]')
-plt.title('Libration')
-
-plt.figure()
-plt.plot(physical_libration[:,0] / 86400.0, physical_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'Physical libration, $\tau$')
-plt.plot(tidal_libration[:,0] / 86400.0, tidal_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'Tidal libration, $\psi$')
-plt.plot(raan[:,0] / 86400.0, raan[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\Omega$')
-plt.plot(non_secular_raan[:,0] / 86400.0, non_secular_raan[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\tilde{\Omega} = \Omega-\Omega_o-\dot{\Omega}t$')
-plt.plot(clean_physical_libration[:,0] / 86400.0, clean_physical_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\tau - \tilde{\Omega}$')
-plt.grid()
-plt.legend()
-plt.xlabel('Time since J2000 [days]')
-plt.ylabel(r'$\alpha$ [º]')
-plt.title('Libration')
-
-plt.figure()
-plt.plot(tidal_libration[:,0] / 86400.0, tidal_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'Tidal libration, $\psi$')
-plt.plot(clean_physical_libration[:,0] / 86400.0, clean_physical_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\tau - \tilde{\Omega}$')
-plt.grid()
-plt.legend()
-plt.xlabel('Time since J2000 [days]')
-plt.ylabel(r'$\alpha$ [º]')
-plt.title('Libration')
-
-plt.figure()
-plt.loglog(clean_physical_libration_frequency * 86400.0, clean_physical_libration_amplitude * 360.0 / TWOPI, marker = '.', label = r'$\tau + \tilde{\Omega}$')
-plt.loglog(physical_libration_frequency * 86400.0, physical_libration_amplitude * 360.0 / TWOPI, marker = '.', label = r'Physical libration, $\tau$')
-plt.loglog(tidal_libration_frequency * 86400.0, tidal_libration_amplitude * 360.0 / TWOPI, marker = '.', label = r'Tidal libration, $\psi$')
-# plt.loglog(raan_frequency * 86400.0, raan_amplitude * 360.0 / TWOPI, marker = '.', label = r'$\Omega$')
-# plt.loglog(non_secular_raan_frequency * 86400.0, non_secular_raan_amplitude * 360.0 / TWOPI, marker = '.', label = r'$\tilde{\Omega}$')
-plt.axvline(normal_mode * 86400.0, ls='dashed', c='k', label='Longitudinal normal mode')
-plt.axvline(average_mean_motion * 86400.0, ls='dashed', c='r', label='Phobos\' mean motion (and integer multiples)')
-plt.axvline(2.0 * average_mean_motion * 86400.0, ls='dashed', c='r')
-plt.axvline(3.0 * average_mean_motion * 86400.0, ls='dashed', c='r')
-plt.grid()
-plt.legend()
-plt.xlabel(r'$\omega$ [rad/day]')
-plt.ylabel(r'$A$ [º]')
-plt.title('Libration frequency content')
-
-omega = reduced_dependents_array[:,[0,11]]
-phi_plus_raan = phi.copy()
-phi_plus_raan[:,1] = phi[:,1] + raan[:,1] + omega[:,1]
-coeffs = np.polyfit(phi_plus_raan[:,0], phi_plus_raan[:,1], 1)
-non_secular_angle = phi_plus_raan.copy()
-non_secular_angle[:,1] = non_secular_angle[:,1] - (coeffs[1] + coeffs[0]*non_secular_angle[:,0])
-plt.figure()
-plt.plot(phi[:,0] / 86400.0, phi[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\phi$')
-plt.plot(raan[:,0] / 86400.0, raan[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\Omega$')
-plt.plot(raan[:,0] / 86400.0, phi[:,1]+raan[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\phi + \Omega$')
-plt.grid()
-plt.legend()
-plt.xlabel('Time since J2000 [days]')
-plt.ylabel(r'$\alpha$ [º]')
-plt.title('Libration')
-
-plt.figure()
-plt.plot(non_secular_angle[:,0] / 86400.0, non_secular_angle[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\tilde{\phi}+\tilde{\Omega}+\tilde{\omega}$')
+# plt.figure()
+# plt.plot(physical_libration[:,0] / 86400.0, physical_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'Physical libration, $\tau$')
+# plt.plot(tidal_libration[:,0] / 86400.0, tidal_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'Tidal libration, $\psi$')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since J2000 [days]')
+# plt.ylabel(r'$\alpha$ [º]')
+# plt.title('Libration')
+#
+# plt.figure()
+# plt.plot(physical_libration[:,0] / 86400.0, physical_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'Physical libration, $\tau$')
+# plt.plot(tidal_libration[:,0] / 86400.0, tidal_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'Tidal libration, $\psi$')
+# plt.plot(raan[:,0] / 86400.0, raan[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\Omega$')
+# plt.plot(non_secular_raan[:,0] / 86400.0, non_secular_raan[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\tilde{\Omega} = \Omega-\Omega_o-\dot{\Omega}t$')
+# plt.plot(clean_physical_libration[:,0] / 86400.0, clean_physical_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\tau - \tilde{\Omega}$')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since J2000 [days]')
+# plt.ylabel(r'$\alpha$ [º]')
+# plt.title('Libration')
+#
+# plt.figure()
+# plt.plot(tidal_libration[:,0] / 86400.0, tidal_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'Tidal libration, $\psi$')
+# plt.plot(clean_physical_libration[:,0] / 86400.0, clean_physical_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\tau - \tilde{\Omega}$')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since J2000 [days]')
+# plt.ylabel(r'$\alpha$ [º]')
+# plt.title('Libration')
+#
+# plt.figure()
+# plt.loglog(clean_physical_libration_frequency * 86400.0, clean_physical_libration_amplitude * 360.0 / TWOPI, marker = '.', label = r'$\tau + \tilde{\Omega}$')
+# plt.loglog(physical_libration_frequency * 86400.0, physical_libration_amplitude * 360.0 / TWOPI, marker = '.', label = r'Physical libration, $\tau$')
+# plt.loglog(tidal_libration_frequency * 86400.0, tidal_libration_amplitude * 360.0 / TWOPI, marker = '.', label = r'Tidal libration, $\psi$')
+# # plt.loglog(raan_frequency * 86400.0, raan_amplitude * 360.0 / TWOPI, marker = '.', label = r'$\Omega$')
+# # plt.loglog(non_secular_raan_frequency * 86400.0, non_secular_raan_amplitude * 360.0 / TWOPI, marker = '.', label = r'$\tilde{\Omega}$')
+# plt.axvline(normal_mode * 86400.0, ls='dashed', c='k', label='Longitudinal normal mode')
+# plt.axvline(average_mean_motion * 86400.0, ls='dashed', c='r', label='Phobos\' mean motion (and integer multiples)')
+# plt.axvline(2.0 * average_mean_motion * 86400.0, ls='dashed', c='r')
+# plt.axvline(3.0 * average_mean_motion * 86400.0, ls='dashed', c='r')
+# plt.grid()
+# plt.legend()
+# plt.xlabel(r'$\omega$ [rad/day]')
+# plt.ylabel(r'$A$ [º]')
+# plt.title('Libration frequency content')
+#
+# omega = reduced_dependents_array[:,[0,11]]
+# phi_plus_raan = phi.copy()
+# phi_plus_raan[:,1] = phi[:,1] + raan[:,1] + omega[:,1]
+# coeffs = np.polyfit(phi_plus_raan[:,0], phi_plus_raan[:,1], 1)
+# non_secular_angle = phi_plus_raan.copy()
+# non_secular_angle[:,1] = non_secular_angle[:,1] - (coeffs[1] + coeffs[0]*non_secular_angle[:,0])
+# plt.figure()
+# plt.plot(phi[:,0] / 86400.0, phi[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\phi$')
 # plt.plot(raan[:,0] / 86400.0, raan[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\Omega$')
 # plt.plot(raan[:,0] / 86400.0, phi[:,1]+raan[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\phi + \Omega$')
-plt.grid()
+# plt.grid()
 # plt.legend()
-plt.xlabel('Time since J2000 [days]')
-plt.ylabel(r'$\alpha$ [º]')
-plt.title('Libration')
-
-
-
+# plt.xlabel('Time since J2000 [days]')
+# plt.ylabel(r'$\alpha$ [º]')
+# plt.title('Libration')
 #
-omega = reduced_dependents_array[:,[0,11]]
-continuous_omega = omega.copy()
-continuous_omega[:,1] = remove_jumps(omega[:,1], TWOPI)
-# # test_freq, test_amp = get_fourier(continuous_omega)
-# frequency = 0.007636490796485515 / 86400.0
-# phase = -0.6340673764456879
-# H = np.zeros([len(omega), 3])
-# for k in range(len(H)):
-#     H[k] = [1, continuous_omega[k,0], np.cos(frequency*continuous_omega[k,0] - phase)]
+# plt.figure()
+# plt.plot(non_secular_angle[:,0] / 86400.0, non_secular_angle[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\tilde{\phi}+\tilde{\Omega}+\tilde{\omega}$')
+# # plt.plot(raan[:,0] / 86400.0, raan[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\Omega$')
+# # plt.plot(raan[:,0] / 86400.0, phi[:,1]+raan[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\phi + \Omega$')
+# plt.grid()
+# # plt.legend()
+# plt.xlabel('Time since J2000 [days]')
+# plt.ylabel(r'$\alpha$ [º]')
+# plt.title('Libration')
+
+##########################################################################################################################
+# omega = reduced_dependents_array[:,[0,11]]
+# theta = reduced_dependents_array[:,[0,12]]
+# mean_anomaly = np.zeros([len(theta), 2])
+# mean_anomaly[:,0] = theta[:,0]
+# for k in range(len(mean_anomaly)):
+#     mean_anomaly[k,1] = true_to_mean_anomaly(theta[k,1], reduced_dependents_array[k,8])
 #
-# params = np.linalg.solve(H.T @ H, H.T @ continuous_omega[:,1])
+# continuous_omega = omega.copy()
+# continuous_omega[:,1] = remove_jumps(omega[:,1], TWOPI)
+# continuous_raan = raan.copy()
+# continuous_raan[:,1] = remove_jumps(raan[:,1], TWOPI)
+# continuous_mean_anomaly = mean_anomaly.copy()
+# continuous_mean_anomaly[:,1] = remove_jumps(mean_anomaly[:,1], TWOPI)
+# continuous_mean_longitude = continuous_mean_anomaly.copy()
+# continuous_mean_longitude[:,1] = continuous_raan[:,1] + continuous_omega[:,1] + continuous_mean_anomaly[:,1]
 #
-coeffs = np.polyfit(continuous_omega[:,0], continuous_omega[:,1], 1)
-non_secular_omega = omega.copy()
-non_secular_omega[:,1] = continuous_omega[:,1] - (coeffs[1] + coeffs[0]*continuous_omega[:,0])
-plt.figure()
-plt.plot(omega[:,0] / 86400.0, bring_inside_bounds(omega[:,1], -PI, PI, 'upper') * 360.0 / TWOPI, marker = '.', label = r'$\omega$')
-# plt.plot(continuous_omega[:,0] / 86400.0, continuous_omega[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\omega$ (unbounded)')
-plt.plot(non_secular_omega[:,0] / 86400.0, non_secular_omega[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\tilde{\omega} = \omega - \omega_o - \dot{\omega}t$')
-plt.grid()
-plt.legend()
-plt.xlabel('Time since J2000 [days]')
-plt.ylabel(r'$\omega$ [º]')
-plt.title('Argument of periapsis')
+# continuous_psi = reduced_dependents_array[:,[0,1]]
+# continuous_psi[:,1] = remove_jumps(continuous_psi[:,1], TWOPI)
+# continuous_phi = reduced_dependents_array[:,[0,3]]
+# continuous_phi[:,1] = remove_jumps(continuous_phi[:,1], TWOPI)
+# continuous_spin = continuous_psi.copy()
+# continuous_spin[:,1] = continuous_psi[:,1] + continuous_phi[:,1]
+#
+# plt.figure()
+# plt.plot(continuous_raan[:,0] / 86400.0, continuous_raan[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\Omega$')
+# plt.plot(continuous_omega[:,0] / 86400.0, continuous_omega[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\omega$')
+# plt.plot(continuous_mean_anomaly[:,0] / 86400.0, continuous_mean_anomaly[:,1] * 360.0 / TWOPI, marker = '.', label = r'$M$')
+# plt.plot(continuous_mean_longitude[:,0] / 86400.0, continuous_mean_longitude[:,1] * 360.0 / TWOPI, marker = '.', label = r'$u = \Omega + \omega + M$')
+# # plt.plot(mean_anomaly[:,0] / 86400.0, mean_anomaly[:,1] * 360.0 / TWOPI, marker = '.', label = r'$M$')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since J2000 [days]')
+# plt.ylabel(r'$\alpha$ [º]')
+# plt.title('Translation angles')
+#
+# plt.figure()
+# plt.plot(continuous_psi[:,0] / 86400.0, continuous_psi[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\psi$')
+# plt.plot(continuous_phi[:,0] / 86400.0, continuous_phi[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\phi$')
+# plt.plot(continuous_spin[:,0] / 86400.0, continuous_spin[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\lambda = \psi + \phi$')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since J2000 [days]')
+# plt.ylabel(r'$\alpha$ [º]')
+# plt.title('Rotation angles')
+#
+# physical_libration = np.zeros([len(reduced_dependents_array), 2])
+# physical_libration[:,0] = reduced_dependents_array[:,0]
+# physical_libration[:,1] = continuous_spin[:,1] - continuous_mean_longitude[:,1]
+# plt.figure()
+# plt.plot(continuous_spin[:,0] / 86400.0, continuous_spin[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\lambda$')
+# plt.plot(continuous_mean_longitude[:,0] / 86400.0, continuous_mean_longitude[:,1] * 360.0 / TWOPI, marker = '.', label = r'$u$')
+# plt.plot(physical_libration[:,0] / 86400.0, physical_libration[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\tau = \lambda - u$')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since J2000 [days]')
+# plt.ylabel(r'$\alpha$ [º]')
+# plt.title('Physical libration')
+#
+# coeffs = np.polyfit(physical_libration[:,0], physical_libration[:,1], 1)
+# physical_libration_residual = np.zeros([len(reduced_dependents_array), 2])
+# physical_libration_residual[:,0] = reduced_dependents_array[:,0]
+# physical_libration_residual[:,1] = physical_libration[:,1] - (coeffs[1] + coeffs[0] * physical_libration[:,0])
+# plt.figure()
+# plt.plot(physical_libration_residual[:,0] / 86400.0, physical_libration_residual[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\tau - \tau_o - \dot{\tau}t$')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since J2000 [days]')
+# plt.ylabel(r'$\alpha$ [º]')
+# plt.title('Physical libration')
+#
+# plt.figure()
+# plt.plot(physical_libration_from_euler_angle[:,0] / 86400.0, physical_libration_from_euler_angle[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\tau$')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since J2000 [days]')
+# plt.ylabel(r'$\alpha$ [º]')
+# plt.title('Physical libration?')
+#
+# tau_frequency, tau_amplitude = fourier_transform(physical_libration_residual)
+# plt.figure()
+# plt.loglog(tau_frequency * 86400.0, tau_amplitude * 360.0 / TWOPI, marker = '.')
+# plt.axvline(normal_mode * 86400.0, ls='dashed', c='k', label='Longitudinal normal mode')
+# plt.axvline(average_mean_motion * 86400.0, ls='dashed', c='r', label='Phobos\' mean motion (and integer multiples)')
+# plt.axvline(2.0 * average_mean_motion * 86400.0, ls='dashed', c='r')
+# plt.axvline(3.0 * average_mean_motion * 86400.0, ls='dashed', c='r')
+# plt.grid()
+# # plt.legend()
+# plt.xlabel(r'$\omega$ [rad/day]')
+# plt.ylabel(r'$A$ [º]')
+# plt.title('Libration frequency content')
+
+###########################################################################################################################
+# #
+# omega = reduced_dependents_array[:,[0,11]]
+# continuous_omega = omega.copy()
+# continuous_omega[:,1] = remove_jumps(omega[:,1], TWOPI)
+# # # test_freq, test_amp = fourier_transform(continuous_omega)
+# # frequency = 0.007636490796485515 / 86400.0
+# # phase = -0.6340673764456879
+# # H = np.zeros([len(omega), 3])
+# # for k in range(len(H)):
+# #     H[k] = [1, continuous_omega[k,0], np.cos(frequency*continuous_omega[k,0] - phase)]
+# #
+# # params = np.linalg.solve(H.T @ H, H.T @ continuous_omega[:,1])
+# #
+# coeffs = np.polyfit(continuous_omega[:,0], continuous_omega[:,1], 1)
+# non_secular_omega = omega.copy()
+# non_secular_omega[:,1] = continuous_omega[:,1] - (coeffs[1] + coeffs[0]*continuous_omega[:,0])
+# plt.figure()
+# plt.plot(omega[:,0] / 86400.0, bring_inside_bounds(omega[:,1], -PI, PI, 'upper') * 360.0 / TWOPI, marker = '.', label = r'$\omega$')
+# # plt.plot(continuous_omega[:,0] / 86400.0, continuous_omega[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\omega$ (unbounded)')
+# plt.plot(non_secular_omega[:,0] / 86400.0, non_secular_omega[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\tilde{\omega} = \omega - \omega_o - \dot{\omega}t$')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since J2000 [days]')
+# plt.ylabel(r'$\omega$ [º]')
+# plt.title('Argument of periapsis')
 #
 # test_line = continuous_omega.copy()
 # test_line[:,1] = params[0] + params[1] * test_line[:,0] + params[2] * np.cos(frequency*test_line[:,0]-phase)
@@ -332,16 +428,16 @@ plt.title('Argument of periapsis')
 # plt.ylabel(r'$n$ [rad/s]')
 # plt.title('Mean motion')
 
-# mean_motion = result2array(mean_motion_history_from_keplerian_history(extract_elements_from_history(dependents, [6, 7, 8, 9, 10, 11]), mu_mars))
-# keplerian_array = result2array(extract_elements_from_history(dependents, [6, 7, 8, 9, 10, 11]))
+# mean_motion = dict2array(mean_motion_history_from_keplerian_history(extract_elements_from_history(dependents, [6, 7, 8, 9, 10, 11]), mu_mars))
+# keplerian_array = dict2array(extract_elements_from_history(dependents, [6, 7, 8, 9, 10, 11]))
 # average_elements, trash = average_over_integer_number_of_orbits(keplerian_array[:,:-1], keplerian_array)
 #
 # eccentricity = 0.015034167790105173
 # average_mean_motion = 0.00022785636553897436                                          # AQUI PASAN COSAS
 #
-# dependents_array = result2array(dependents)                                           # ESTAMOS AQUIIIIIII!!!!!!
+# dependents_array = dict2array(dependents)                                           # ESTAMOS AQUIIIIIII!!!!!!
 #
-# tid_lib_freq, tid_lib_amp = get_fourier(dependents_array[:,[0,6]])                    # HOLA BUYENASSSSS
+# tid_lib_freq, tid_lib_amp = fourier_transform(dependents_array[:,[0,6]])                    # HOLA BUYENASSSSS
 #
 #
 # dependents_array = dependents_array[dependents_array[:,0] <= 86400.0 * 90.0]
@@ -408,7 +504,7 @@ plt.title('Argument of periapsis')
 # plt.title('Coordinates')
 # plt.grid()
 #
-# freq, amp = get_fourier(np.concatenate((np.atleast_2d(epochs_array).T, np.atleast_2d(sph[:,2]).T), axis = 1), [TWOPI, 1])
+# freq, amp = fourier_transform(np.concatenate((np.atleast_2d(epochs_array).T, np.atleast_2d(sph[:,2]).T), axis = 1), [TWOPI, 1])
 #
 # plt.figure()
 # plt.loglog(freq * 86400.0, np.degrees(amp), marker = '.')
@@ -427,32 +523,32 @@ plt.title('Argument of periapsis')
 # normal_mode = get_longitudinal_normal_mode_from_inertia_tensor(bodies.get('Phobos').inertia_tensor, average_mean_motion)
 #
 # file = 'simulation-results/model-a1/2023-07-13 10:24:42.226993/dependent-variable-history.dat'
-# lib_a1 = result2array(extract_elements_from_history(read_vector_history_from_file(file), [4, 5]))
-# freq_a1, amp_a1 = get_fourier(lib_a1[:,[0,2]], [TWOPI, 1])
+# lib_a1 = dict2array(extract_elements_from_history(read_vector_history_from_file(file), [4, 5]))
+# freq_a1, amp_a1 = fourier_transform(lib_a1[:,[0,2]], [TWOPI, 1])
 #
 # file = 'simulation-results/model-a2/2023-07-13 11:38:45.319336/dependents-undamped.dat'
-# lib_a2_undamped = result2array(extract_elements_from_history(read_vector_history_from_file(file), [4, 5]))
-# freq_a2_undamped, amp_a2_undamped = get_fourier(lib_a2_undamped[:,[0,2]], [TWOPI, 1])
+# lib_a2_undamped = dict2array(extract_elements_from_history(read_vector_history_from_file(file), [4, 5]))
+# freq_a2_undamped, amp_a2_undamped = fourier_transform(lib_a2_undamped[:,[0,2]], [TWOPI, 1])
 #
 # file = 'simulation-results/model-a2/2023-07-13 11:38:45.319336/dependents-d8192.dat'
-# lib_a2_damped = result2array(extract_elements_from_history(read_vector_history_from_file(file), [4, 5]))
-# freq_a2_damped, amp_a2_damped = get_fourier(lib_a2_damped[:,[0,2]], [TWOPI, 1])
+# lib_a2_damped = dict2array(extract_elements_from_history(read_vector_history_from_file(file), [4, 5]))
+# freq_a2_damped, amp_a2_damped = fourier_transform(lib_a2_damped[:,[0,2]], [TWOPI, 1])
 #
 # file = 'simulation-results/model-b/2023-07-13 12:35:19.273692/dependents-undamped.dat'
-# lib_b_undamped = result2array(extract_elements_from_history(read_vector_history_from_file(file), [4, 5]))
-# freq_b_undamped, amp_b_undamped = get_fourier(lib_b_undamped[:,[0,2]], [TWOPI, 1])
+# lib_b_undamped = dict2array(extract_elements_from_history(read_vector_history_from_file(file), [4, 5]))
+# freq_b_undamped, amp_b_undamped = fourier_transform(lib_b_undamped[:,[0,2]], [TWOPI, 1])
 #
 # file = 'simulation-results/model-b/2023-07-13 12:35:19.273692/dependents-d8192.dat'
-# lib_b_damped = result2array(extract_elements_from_history(read_vector_history_from_file(file), [4, 5]))
-# freq_b_damped, amp_b_damped = get_fourier(lib_b_damped[:,[0,2]], [TWOPI, 1])
+# lib_b_damped = dict2array(extract_elements_from_history(read_vector_history_from_file(file), [4, 5]))
+# freq_b_damped, amp_b_damped = fourier_transform(lib_b_damped[:,[0,2]], [TWOPI, 1])
 #
 # file = 'simulation-results/model-c/2023-07-13 22:02:17.013120/dependents-undamped.dat'
-# lib_c_undamped = result2array(extract_elements_from_history(read_vector_history_from_file(file), [4, 5]))
-# freq_c_undamped, amp_c_undamped = get_fourier(lib_c_undamped[:,[0,2]], [TWOPI, 1])
+# lib_c_undamped = dict2array(extract_elements_from_history(read_vector_history_from_file(file), [4, 5]))
+# freq_c_undamped, amp_c_undamped = fourier_transform(lib_c_undamped[:,[0,2]], [TWOPI, 1])
 #
 # file = 'simulation-results/model-c/2023-07-13 22:02:17.013120/dependents-d8192.dat'
-# lib_c_damped = result2array(extract_elements_from_history(read_vector_history_from_file(file), [4, 5]))
-# freq_c_damped, amp_c_damped = get_fourier(lib_c_damped[:,[0,2]], [TWOPI, 1])
+# lib_c_damped = dict2array(extract_elements_from_history(read_vector_history_from_file(file), [4, 5]))
+# freq_c_damped, amp_c_damped = fourier_transform(lib_c_damped[:,[0,2]], [TWOPI, 1])
 #
 # # Aquí van a estar los undamped
 # plt.figure()
@@ -510,21 +606,21 @@ plt.title('Argument of periapsis')
 
 # read_dir = os.getcwd() + '/simulation-results/model-a1/2023-07-13 10:24:42.226993/'
 # dependents = read_vector_history_from_file(read_dir + 'dependent-variable-history.dat')
-# libration_translation = result2array(extract_elements_from_history(dependents, [4, 5]))
+# libration_translation = dict2array(extract_elements_from_history(dependents, [4, 5]))
 #
 # read_dir = os.getcwd() + '/simulation-results/model-a2/2023-07-13 11:38:45.319336/'
 # dependents = read_vector_history_from_file(read_dir + 'dependents-d8192.dat')
-# libration_rotation = result2array(extract_elements_from_history(dependents, [4, 5]))
+# libration_rotation = dict2array(extract_elements_from_history(dependents, [4, 5]))
 #
 # read_dir = os.getcwd() + '/simulation-results/model-b/2023-07-13 12:35:19.273692/'
 # dependents = read_vector_history_from_file(read_dir + 'dependents-d8192.dat')
-# libration_coupled = result2array(extract_elements_from_history(dependents, [4, 5]))
+# libration_coupled = dict2array(extract_elements_from_history(dependents, [4, 5]))
 #
-# freq_trans, amp_trans = get_fourier(libration_translation, clean_signal = [TWOPI, 1])
+# freq_trans, amp_trans = fourier_transform(libration_translation, clean_signal = [TWOPI, 1])
 
 # dependents = read_vector_history_from_file(read_dir + 'dependents-undamped.dat')
-# libration_history = result2array(extract_elements_from_history(dependents, 5))
-# freq, amp = get_fourier(libration_history, clean_signal = [TWOPI, 1])
+# libration_history = dict2array(extract_elements_from_history(dependents, 5))
+# freq, amp = fourier_transform(libration_history, clean_signal = [TWOPI, 1])
 # temp = amp[freq > 0.96*average_mean_motion]
 # aux = freq[freq > 0.96*average_mean_motion]
 # temp = temp[aux < 1.04*average_mean_motion]
@@ -535,8 +631,8 @@ plt.title('Argument of periapsis')
 #     time_str = str(int(current_dissipation_time / 3600.0))
 #     print('Processing damping time of ' + time_str + ' hours.')
 #     dependents = read_vector_history_from_file(read_dir + 'dependents-d' + time_str + '-full.dat')
-#     libration_history = result2array(extract_elements_from_history(dependents, 5))
-#     freq, amp = get_fourier(libration_history, clean_signal=[TWOPI, 1])
+#     libration_history = dict2array(extract_elements_from_history(dependents, 5))
+#     freq, amp = fourier_transform(libration_history, clean_signal=[TWOPI, 1])
 #     temp = amp[freq > 0.96 * average_mean_motion]
 #     aux = freq[freq > 0.96 * average_mean_motion]
 #     temp = temp[aux < 1.04 * average_mean_motion]
@@ -563,7 +659,7 @@ plt.title('Argument of periapsis')
 # big_time_step_history = read_vector_history_from_file(dir + '2023-07-23 11:42:54.947535/state-history.dat')
 # small_time_step_history = read_vector_history_from_file(dir + '2023-07-23 11:54:41.670469/state-history.dat')
 # errors = compare_results(small_time_step_history, big_time_step_history, list(big_time_step_history.keys()))
-# errors_array = result2array(errors)
+# errors_array = dict2array(errors)
 #
 # epochs_array = errors_array[:,0]
 # position_error_array = errors_array[:,1:4]
@@ -672,8 +768,8 @@ plt.title('Argument of periapsis')
 # cosas[:,1] = final_state_perturbance_as_per_errors_file
 # cosas[:,2] = final_state_perturbance_due_to_initial_state_perturbance - final_state_perturbance_as_per_errors_file
 #
-# dependents_a = result2array(read_vector_history_from_file('ephemeris/associated-dependents/a1.dat'))
-# dependents_b = result2array(read_vector_history_from_file('ephemeris/associated-dependents/b.dat'))
+# dependents_a = dict2array(read_vector_history_from_file('ephemeris/associated-dependents/a1.dat'))
+# dependents_b = dict2array(read_vector_history_from_file('ephemeris/associated-dependents/b.dat'))
 # lat_a = bring_inside_bounds(dependents_a[:,5], -PI/2, PI/2, include = 'upper')
 # lon_a = bring_inside_bounds(dependents_a[:,6], -PI, PI, include = 'upper')
 # lat_b = bring_inside_bounds(dependents_b[:,5], -PI/2, PI/2, include = 'upper')
@@ -692,16 +788,16 @@ plt.title('Argument of periapsis')
 # coupled = read_vector_history_from_file('ephemeris/translation-b.eph')
 # uncoupled_new = read_vector_history_from_file('simulation-results/model-a1/2023-08-08 21:08:09.167299/state-history.dat')
 # coupled_new = read_vector_history_from_file('ephemeris/new/translation-b.eph')
-# diffs = result2array(compare_results(uncoupled, coupled, list(coupled.keys())))
-# diffs_new = result2array(compare_results(uncoupled_new, coupled_new, list(coupled_new.keys())))
+# diffs = dict2array(compare_results(uncoupled, coupled, list(coupled.keys())))
+# diffs_new = dict2array(compare_results(uncoupled_new, coupled_new, list(coupled_new.keys())))
 # normed_diffs = norm_rows(diffs[:,1:4])
 # normed_diffs_new = norm_rows(diffs_new[:,1:4])
-# integration_errors = result2array(read_vector_history_from_file('benchmark_errors/A1/2023-08-08 22:02:22.057801/rkdp-dt270/errors.dat'))
+# integration_errors = dict2array(read_vector_history_from_file('benchmark_errors/A1/2023-08-08 22:02:22.057801/rkdp-dt270/errors.dat'))
 # normed_integration_errors = norm_rows(integration_errors[:,1:4])
 #
-# deltas = result2array(
-#     compare_results(array2result(np.concatenate((np.atleast_2d(diffs[:,0]).T, np.atleast_2d(normed_diffs).T), 1)),
-#                     array2result(np.concatenate((np.atleast_2d(diffs_new[:,0]).T, np.atleast_2d(normed_diffs_new).T), 1)),
+# deltas = dict2array(
+#     compare_results(array2dict(np.concatenate((np.atleast_2d(diffs[:,0]).T, np.atleast_2d(normed_diffs).T), 1)),
+#                     array2dict(np.concatenate((np.atleast_2d(diffs_new[:,0]).T, np.atleast_2d(normed_diffs_new).T), 1)),
 #                     diffs_new[:,0])
 # )
 #
@@ -839,20 +935,20 @@ plt.title('Argument of periapsis')
 
 # batch = 'batch 2023-08-12 10:25:25.573262'
 # estimation_time = '30'
-# residuals = result2array(read_vector_history_from_file('estimation-results/' + batch + '/estimation-time-' + estimation_time + '/residual-history-rsw.dat'))
-# dependents = result2array(compare_results(extract_elements_from_history(read_vector_history_from_file('ephemeris/new/associated-dependents/b.dat'), list(range(6,12))),
+# residuals = dict2array(read_vector_history_from_file('estimation-results/' + batch + '/estimation-time-' + estimation_time + '/residual-history-rsw.dat'))
+# dependents = dict2array(compare_results(extract_elements_from_history(read_vector_history_from_file('ephemeris/new/associated-dependents/b.dat'), list(range(6,12))),
 #                                           extract_elements_from_history(read_vector_history_from_file('ephemeris/new/associated-dependents/a1.dat'), list(range(6,12))),
 #                                           residuals[:,0]))
 #
-# r_freq, r_amp = get_fourier(residuals[:,[0,1]], [0.0, 1])
-# s_freq, s_amp = get_fourier(residuals[:,[0,2]], [0.0, 1])
-# w_freq, w_amp = get_fourier(residuals[:,[0,3]], [0.0, 1])
-# a_freq, a_amp = get_fourier(dependents[:,[0,1]], [0.0, 1])
-# e_freq, e_amp = get_fourier(dependents[:,[0,2]], [0.0, 1])
-# i_freq, i_amp = get_fourier(dependents[:,[0,3]], [TWOPI, 1])
-# omega_freq, omega_amp = get_fourier(dependents[:,[0,4]], [TWOPI, 1])
-# raan_freq, raan_amp = get_fourier(dependents[:,[0,5]], [TWOPI, 1])
-# theta_freq, theta_amp = get_fourier(dependents[:,[0,6]], [TWOPI, 1])
+# r_freq, r_amp = fourier_transform(residuals[:,[0,1]], [0.0, 1])
+# s_freq, s_amp = fourier_transform(residuals[:,[0,2]], [0.0, 1])
+# w_freq, w_amp = fourier_transform(residuals[:,[0,3]], [0.0, 1])
+# a_freq, a_amp = fourier_transform(dependents[:,[0,1]], [0.0, 1])
+# e_freq, e_amp = fourier_transform(dependents[:,[0,2]], [0.0, 1])
+# i_freq, i_amp = fourier_transform(dependents[:,[0,3]], [TWOPI, 1])
+# omega_freq, omega_amp = fourier_transform(dependents[:,[0,4]], [TWOPI, 1])
+# raan_freq, raan_amp = fourier_transform(dependents[:,[0,5]], [TWOPI, 1])
+# theta_freq, theta_amp = fourier_transform(dependents[:,[0,6]], [TWOPI, 1])
 #
 # plt.figure()
 # plt.plot(r_freq * 86400.0, r_amp, marker='.', label=r'$R$')
@@ -877,22 +973,22 @@ plt.title('Argument of periapsis')
 
 # mars_mu = 42828375815756.1
 # initial_state = read_vector_history_from_file('ephemeris/new/translation-b.eph')
-# dependents_coupled = result2array(read_vector_history_from_file('ephemeris/new/associated-dependents/b.dat'))
-# dependents_uncoupled = result2array(read_vector_history_from_file('ephemeris/new/associated-dependents/a1.dat'))
+# dependents_coupled = dict2array(read_vector_history_from_file('ephemeris/new/associated-dependents/b.dat'))
+# dependents_uncoupled = dict2array(read_vector_history_from_file('ephemeris/new/associated-dependents/a1.dat'))
 #
 # diffs = np.zeros([len(dependents_coupled), 7])
 # diffs[:,0] = dependents_uncoupled[:,0]
 # diffs[:,1:] = dependents_coupled[:,7:13] - dependents_uncoupled[:,7:13]
 # diffs[:,4] = bring_inside_bounds(diffs[:,4], -PI, PI, include = 'upper')
 # diffs[:,6] = bring_inside_bounds(diffs[:,6], -PI, PI, include = 'upper')
-# diffs = array2result(diffs)
+# diffs = array2dict(diffs)
 #
 # plot_kepler_elements(diffs, 'Differences in keplerian elements between coupled and uncoupled models')
 
 # physical_libration = dependents_coupled[:,[0,3]]
 # tidal_libration = dependents_coupled[:,[0,6]]
-# tid_lib_freq, tid_lib_amp = get_fourier(tidal_libration, [TWOPI, 1])
-# phy_lib_freq, phy_lib_amp = get_fourier(physical_libration, [TWOPI, 1])
+# tid_lib_freq, tid_lib_amp = fourier_transform(tidal_libration, [TWOPI, 1])
+# phy_lib_freq, phy_lib_amp = fourier_transform(physical_libration, [TWOPI, 1])
 #
 # plt.figure()
 # plt.loglog(tid_lib_freq * 86400.0, tid_lib_amp * 360.0 / TWOPI, marker = '.', label = 'Tidal libration')
@@ -957,6 +1053,66 @@ plt.title('Argument of periapsis')
 # plt.ylabel(r'$\alpha$ [º]')
 # plt.title('Librations')
 
+save_dir = os.getcwd() + '/checking-partials/august-crisis/'
+os.makedirs(save_dir, exist_ok = True)
+
+increments = [-0.001, 0.00, 0.001]
+initial_state = read_vector_history_from_file('ephemeris/translation-b.eph')[0.0]
+simulation_time = 30.0 * constants.JULIAN_DAY
+
+for idx, current_increment in enumerate(increments):
+
+    current_libration_amplitude = (1.00 + current_increment) * 2.6952203863816266
+    bodies = get_solar_system('A1', libration_amplitude=current_libration_amplitude)
+    propagator_settings = get_propagator_settings('A1', bodies, 0.0, initial_state, simulation_time)
+
+    if current_increment == 0.0:
+        parameter_settings = (estimation_setup.parameter.initial_states(propagator_settings, bodies, [0.0]) +
+                              [estimation_setup.parameter.scaled_longitude_libration_amplitude('Phobos')])
+        parameters_to_estimate = estimation_setup.create_parameter_set(parameter_settings, bodies)
+        simulator = numerical_simulation.create_variational_equations_solver(bodies,
+                                                                             propagator_settings,
+                                                                             parameters_to_estimate)
+        write_matrix_history_to_file(simulator.sensitivity_matrix_history, save_dir + 'sensitivity-matrix-history.dat')
+
+        for increment in [x for x in increments if x != 0.00]:
+            analytical_delta = dict.fromkeys(list(simulator.state_history.keys()))
+            for epoch in list(analytical_delta.keys()):
+                analytical_delta[epoch] = (simulator.sensitivity_matrix_history[epoch] @ np.array([[increment]])).reshape(6)
+
+            save2txt(analytical_delta, save_dir + 'analytical-delta' + str(int(np.sign(increment))) + '.dat')
+    else:
+        simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
+
+    save2txt(simulator.state_history, save_dir + 'state-history-libration-index-' + str(idx) + '.dat')
+
+analytical_delta_plus = read_vector_history_from_file(save_dir + 'analytical-delta1.dat')
+analytical_delta_minus = read_vector_history_from_file(save_dir + 'analytical-delta-1.dat')
+states_nominal = read_vector_history_from_file(save_dir + 'state-history-libration-index-1.dat')
+states_plus = read_vector_history_from_file(save_dir + 'state-history-libration-index-2.dat')
+states_minus = read_vector_history_from_file(save_dir + 'state-history-libration-index-0.dat')
+epochs = list(states_nominal.keys())
+
+numerical_delta_plus = compare_results(states_nominal, states_plus, epochs)
+numerical_delta_minus = compare_results(states_nominal, states_minus, epochs)
+
+dr_plus = np.zeros([len(epochs), 2])
+dr_minus = np.zeros([len(epochs), 2])
+dr_plus[:,0] = epochs
+dr_minus[:,0] = epochs
+dr_plus[:,1] = norm_rows(dict2array(compare_results(analytical_delta_plus, numerical_delta_plus, epochs))[:,1:4])
+dr_minus[:,1] = norm_rows(dict2array(compare_results(analytical_delta_minus, numerical_delta_minus, epochs))[:,1:4])
+
+epochs = np.array(epochs)
+plt.figure()
+plt.plot(epochs / 86400.0, dr_plus[:,1], marker = '.', label = r'$\Delta r_{+}$')
+# plt.plot(epochs / 86400.0, dr_minus[:,1], marker = '.', label = r'$\Delta r_{-}$')
+# plt.yscale('log')
+plt.grid()
+# plt.legend()
+plt.xlabel('Time since J2000 [days]')
+plt.ylabel(r'$\Delta r$ [m]')
+plt.title('Difference between analytical and numerical deviations')
 
 print('PROGRAM COMPLETED SUCCESSFULLY')
 

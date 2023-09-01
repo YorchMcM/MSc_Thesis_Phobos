@@ -6,118 +6,53 @@ from tudatpy.io import save2txt
 TWOPI = 2*PI
 
 
-def str2vec(string: str, separator: str) -> np.ndarray:
-    return np.array([float(element) for element in string.split(separator)])
+def array2dict(array: np.ndarray) -> dict[float, np.ndarray]:
 
+    '''
 
-def vectorize_matrix(matrix: np.ndarray) -> np.ndarray:
+    This function converts an array into a dictionary. Each row of the array is an element of the dictionary. The first
+    column is used as keys for the dictionary elements. The rest of the elements in each row are stored as a vector in
+    the dictionary entry.
 
-    n = len(matrix[:,0])
+    :param array: The array that is to be converted into a dictionary.
+    :return: The dictionary.
+    '''
 
-    vectorized_matrix = matrix[0,:]
-    for idx in range(1,n):
-        vectorized_matrix = np.concatenate((vectorized_matrix, matrix[idx,:]), 0)
+    return dict(zip(array[:,0], array[:,1:]))
 
-    return vectorized_matrix
-
-
-def unvectorize_matrix(vectorized_matrix: np.ndarray, dimensions: list[int]) -> np.ndarray:
-
-    rows, columns = dimensions
-    if rows*columns != len(vectorized_matrix):
-        raise ValueError('(unvectorize_matrix): Dimensions provided incompatible with vectorized matrices encountered')
-
-    unvectorized_matrix = np.zeros(dimensions)
-    for idx in range(rows): unvectorized_matrix[idx,:] = vectorized_matrix[columns*idx:columns*(idx+1)]
-
-    return unvectorized_matrix
-
-
-def read_vector_history_from_file(file_name: str) -> dict:
-
-    with open(file_name, 'r') as file: lines = file.readlines()
-    keys = [float(line.split('\t')[0]) for line in lines]
-    solution = dict.fromkeys(keys)
-    for idx in range(len(keys)): solution[keys[idx]] = str2vec(lines[idx], '\t')[1:]
-
-    return solution
-
-
-def save_matrix_history_to_file(result: dict[float, np.ndarray], filename: str) -> None:
-
-    key_list = list(result.keys())
-    new_dict = dict.fromkeys(key_list)
-    for key in key_list: new_dict[key] = vectorize_matrix(result[key])
-
-    save2txt(new_dict, filename)
-
-    return
-
-
-def read_matrix_history_from_file(filename: str, dimensions: list[int]) -> dict[float, np.ndarray]:
-
-    vectorized_history = read_vector_history_from_file(filename)
-    key_list = list(vectorized_history.keys())
-    unvectorized_history = dict.fromkeys(key_list)
-    for key in key_list: unvectorized_history[key] = unvectorize_matrix(vectorized_history[key], dimensions)
-
-    return unvectorized_history
-
-
-def save_matrix_to_file(matrix: np.ndarray, filename: str) -> None:
-
-    matrix_str = ''
-    rows, columns = matrix.shape
-
-    for row in range(rows):
-        matrix_str = matrix_str + str(matrix[row,0])
-        for column in range(1,columns):
-            matrix_str = matrix_str + ' ' + str(matrix[row,column])
-        matrix_str = matrix_str + '\n'
-
-    with open(filename, 'w') as file: file.write(matrix_str)
-
-    return
-
-
-def read_matrix_from_file(file_name: str, dimensions: list[int]) -> np.ndarray[float]:
-
-    result = np.zeros(dimensions)
-    with open(file_name, 'r') as file: rows = file.readlines()
-    if len(rows) != dimensions[0]: raise ValueError('(read_matrix_from_file): Provided dimensions do not match with encountered matrix.')
-
-    for idx1 in range(dimensions[0]):
-        components = rows[idx1].split(' ')
-        for idx2 in range(dimensions[1]):
-            result[idx1, idx2] = float(components[idx2])
-
-    return result
-
-
-def array2result(array: np.ndarray) -> dict[float, np.ndarray]:
-
-    keys = list(array[:,0])
-    result = dict.fromkeys(keys)
-    for idx in range(len(keys)):
-        result[keys[idx]] = array[idx, 1:]
-
-    return result
-
-
-def result2array(result: dict) -> np.ndarray:
-
-    n = len(list(result.keys()))
-    array_history = np.concatenate((np.array(list(result.keys())).reshape([n, 1]), np.vstack(list(result.values()))), 1)
-
-    return array_history
+'''
+########################################################################################################################
+########################################################################################################################
+##########                                                                                                    ##########
+##########                                   BRING INSIDE BOUNDS FAMILY                                       ##########
+##########                                                                                                    ##########
+########################################################################################################################
+########################################################################################################################
+'''
 
 
 def bring_history_inside_bounds(original: dict, lower_bound: float,
                                 upper_bound: float, include: str = 'lower') -> np.ndarray:
 
-    original_array = result2array(original)
+    '''
+
+    It takes a dictionary whose values are either arrays or scalars, and brings all the numbers on the values to within
+    a specified semi-open interval. It is the dictionary version of bring_inside_bounds. The operation is NOT applied on the keys.
+
+    :param original: The original dictionary.
+    :param lower_bound: The lower bound of the interval.
+    :param upper_bound: The upper bound of the interval.
+    :param include: The bound to be included.
+    :return: The modified dictionary.
+    '''
+
+    if include not in ['upper', 'lower']:
+        raise ValueError('(bring_history_inside_bounds): Invalid value of "include" input. Allowed ones are "upper" and'
+                         ' "lower". Provided is "' + include + '".')
+
+    original_array = dict2array(original)
     original_array[:,1:] = bring_inside_bounds(original_array[:,1:], lower_bound, upper_bound, include)
-    new = array2result(original_array)
+    new = array2dict(original_array)
 
     return new
 
@@ -125,23 +60,19 @@ def bring_history_inside_bounds(original: dict, lower_bound: float,
 def bring_inside_bounds(original: np.ndarray, lower_bound: float,
                         upper_bound: float, include: str = 'lower') -> np.ndarray:
 
-    reconvert = False
-
     if include not in ['upper', 'lower']:
         raise ValueError('(bring_inside_bounds): Invalid value for argument "include". Only "upper" and "lower" are allowed. Provided: ' + include)
 
-    scalar_types = [float, np.float32, np.float64, np.float128]
+    scalar_types = [int, float, np.float32, np.float64, np.float128]
     if type(original) in scalar_types:
-        original = np.array([original])
-        reconvert = True
+        to_return = bring_inside_bounds_scalar(original, lower_bound, upper_bound, include)
+    else:
 
-    dim_num = len(original.shape)
+        dim_num = len(original.shape)
 
-    if dim_num == 1: to_return = bring_inside_bounds_single_dim(original, lower_bound, upper_bound, include)
-    elif dim_num == 2: to_return = bring_inside_bounds_double_dim(original, lower_bound, upper_bound, include)
-    else: raise ValueError('(bring_inside_bounds): Invalid input array.')
-
-    if reconvert: to_return = to_return[0]
+        if dim_num == 1: to_return = bring_inside_bounds_single_dim(original, lower_bound, upper_bound, include)
+        elif dim_num == 2: to_return = bring_inside_bounds_double_dim(original, lower_bound, upper_bound, include)
+        else: raise ValueError('(bring_inside_bounds): Invalid input array.')
 
     return to_return
 
@@ -199,79 +130,22 @@ def bring_inside_bounds_scalar(original: float, lower_bound: float,
 
     return new
 
-
-def remove_jumps(original: np.ndarray, jump_height: float, margin: float = 0.03) -> np.ndarray:
-
-    dim_num = len(original.shape)
-
-    if dim_num == 1: return remove_jumps_single_dim(original, jump_height, margin)
-    elif dim_num == 2: return remove_jumps_double_dim(original, jump_height, margin)
-    else: raise ValueError('(remove_jumps): Invalid input array.')
+'''
+########################################################################################################################
+########################################################################################################################
+'''
 
 
-def remove_jumps_single_dim(original: np.ndarray, jump_height: float, margin: float = 0.03) -> np.ndarray:
+def dict2array(result: dict) -> np.ndarray:
 
-    new = original.copy()
-    u = 1.0 - margin
-    l = -1.0 + margin
-    for idx in range(len(new)-1):
-        d = (new[idx+1] - new[idx]) / jump_height
-        if d <= l: new[idx+1:] = new[idx+1:] + jump_height
-        if d >= u: new[idx+1:] = new[idx+1:] - jump_height
+    n = len(list(result.keys()))
+    array_history = np.concatenate((np.array(list(result.keys())).reshape([n, 1]), np.vstack(list(result.values()))), 1)
 
-    return new
+    return array_history
 
 
-def remove_jumps_double_dim(original: np.array, jump_height: float, margin: float = 0.03) -> np.ndarray:
-
-    new = original.copy()
-    u = 1.0 - margin
-    l = -1.0 + margin
-    for col in range(new.shape[1]):
-        for row in range(new.shape[0]-1):
-            d = ( new[row+1,col] - new[row,col] ) / jump_height
-            if d <= l: new[row+1:,col] = new[row+1:,col] + jump_height
-            if d >= u: new[row+1:,col] = new[row+1:,col] - jump_height
-
-    return new
-
-
-def extract_elements_from_history(history: dict, index) -> dict:
-
-    if type(index) is int: index = [index]
-    elif type(index) is list: pass
-    else: raise TypeError('(extract_element_from_history): Illegal index type.')
-
-
-    n = len(index)
-    new_history = dict.fromkeys(list(history.keys()))
-    for key in list(new_history.keys()):
-        new_history[key] = np.zeros(n)
-        k = 0
-        for current_index in index:
-            new_history[key][k] = history[key][current_index]
-            k = k + 1
-
-    return new_history
-
-
-def get_epoch_elements_from_epoch(epoch: float) -> np.ndarray:
-
-    day = epoch // 86400.0
-    hours = (epoch % 86400.0) // 3600.0
-    minutes = ((epoch % 86400.0) % 3600.0) // 60.0
-    seconds = ((epoch % 86400.0) % 3600.0) % 60.0
-
-    return day, hours, minutes, seconds
-
-
-def set_axis_color(axis, side, color):
-
-    axis.tick_params(axis='y', colors=color)
-    axis.spines[side].set_color(color)
-    axis.yaxis.label.set_color(color)
-
-    return
+def extract_elements_from_history(history: dict, index: int | list[int]) -> dict:
+    return dict(zip(np.array(list(history.keys())), np.vstack(list(history.values()))[:,index]))
 
 
 def matrix_result_to_column_array(matrix_dict: dict, column_to_extract: int) -> np.ndarray:
@@ -312,45 +186,182 @@ def matrix_result_to_row_array(matrix_dict: dict, row_to_extract: int) -> np.nda
     return array_to_return
 
 
-def retrieve_ephemeris_files(model: str, use_new: bool = False) -> tuple:
+def read_matrix_history_from_file(filename: str, dimensions: list[int]) -> dict[float, np.ndarray]:
 
-    if use_new:
-        extra = 'new/'
-    else:
-        extra = ''
+    vectorized_history = read_vector_history_from_file(filename)
+    key_list = list(vectorized_history.keys())
+    unvectorized_history = dict.fromkeys(key_list)
+    for key in key_list: unvectorized_history[key] = unvectorize_matrix(vectorized_history[key], dimensions)
+
+    return unvectorized_history
+
+
+def read_matrix_from_file(file_name: str, dimensions: list[int]) -> np.ndarray[float]:
+
+    result = np.zeros(dimensions)
+    with open(file_name, 'r') as file: rows = file.readlines()
+    if len(rows) != dimensions[0]: raise ValueError('(read_matrix_from_file): Provided dimensions do not match with encountered matrix.')
+
+    for idx1 in range(dimensions[0]):
+        components = rows[idx1].split(' ')
+        for idx2 in range(dimensions[1]):
+            result[idx1, idx2] = float(components[idx2])
+
+    return result
+
+
+def read_vector_history_from_file(file_name: str) -> dict:
+
+    with open(file_name, 'r') as file: lines = file.readlines()
+    content = np.vstack([str2vec(line, '\t') for line in lines])
+
+    return dict(zip(content[:,0], content[:,1:]))
+
+
+'''
+########################################################################################################################
+########################################################################################################################
+##########                                                                                                    ##########
+##########                                     REMOVE JUMPS FAMILY                                            ##########
+##########                                                                                                    ##########
+########################################################################################################################
+########################################################################################################################
+'''
+
+
+def remove_jumps(original: np.ndarray, jump_height: float, margin: float = 0.03) -> np.ndarray:
+
+    '''
+
+    CAUTION! This function iterates over EVERY SINGLE ENTRY of an array. For large arrays, this might take a while
+
+    :param original:
+    :param jump_height:
+    :param margin:
+    :return:
+    '''
+
+    dim_num = len(original.shape)
+
+    if dim_num == 1: return remove_jumps_single_dim(original, jump_height, margin)
+    elif dim_num == 2: return remove_jumps_double_dim(original, jump_height, margin)
+    else: raise ValueError('(remove_jumps): Invalid input array.')
+
+
+def remove_jumps_single_dim(original: np.ndarray, jump_height: float, margin: float = 0.03) -> np.ndarray:
+
+    new = original.copy()
+    u = 1.0 - margin
+    l = -1.0 + margin
+    for idx in range(len(new)-1):
+        d = (new[idx+1] - new[idx]) / jump_height
+        if d <= l: new[idx+1:] = new[idx+1:] + jump_height
+        if d >= u: new[idx+1:] = new[idx+1:] - jump_height
+
+    return new
+
+
+def remove_jumps_double_dim(original: np.array, jump_height: float, margin: float = 0.03) -> np.ndarray:
+
+    new = original.copy()
+    u = 1.0 - margin
+    l = -1.0 + margin
+    for col in range(new.shape[1]):
+        for row in range(new.shape[0]-1):
+            d = ( new[row+1,col] - new[row,col] ) / jump_height
+            if d <= l: new[row+1:,col] = new[row+1:,col] + jump_height
+            if d >= u: new[row+1:,col] = new[row+1:,col] - jump_height
+
+    return new
+
+'''
+########################################################################################################################
+########################################################################################################################
+'''
+
+
+def retrieve_ephemeris_files(model: str, eph_subdir: str = '') -> tuple:
 
     if model == 'S':
-        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + extra + 'translation-s.eph'
+        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'translation-s.eph'
         rotational_ephemeris_file = None
     elif model == 'A1':
-        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + extra + 'translation-a.eph'
+        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'translation-a.eph'
         rotational_ephemeris_file = None
     elif model == 'A2':
         translational_ephemeris_file = None
-        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + extra + 'rotation-a.eph'
+        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'rotation-a.eph'
     elif model == 'B':
-        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + extra + 'translation-b.eph'
-        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + extra + 'rotation-b.eph'
+        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'translation-b.eph'
+        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'rotation-b.eph'
     elif model == 'C':
-        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + extra + 'translation-c.eph'
-        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + extra + 'rotation-c.eph'
+        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'translation-c.eph'
+        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'rotation-c.eph'
     else:
         raise ValueError('Invalid observation model selected.')
 
     return translational_ephemeris_file, rotational_ephemeris_file
 
 
-def get_itc(parameter_evolution: dict[float, np.ndarray]) -> int:
+def seconds_since_j2000_to_days_hours_minutes_seconds(epoch: float) -> np.ndarray:
 
-    number_of_iterations = int(len(list(parameter_evolution.keys()))-1)
+    day = epoch // 86400.0
+    hours = (epoch % 86400.0) // 3600.0
+    minutes = ((epoch % 86400.0) % 3600.0) // 60.0
+    seconds = ((epoch % 86400.0) % 3600.0) % 60.0
 
-    itc = -1
-    for k in range(number_of_iterations):
-        parameter_changes = 100.0*abs(parameter_evolution[k+1] / parameter_evolution[k] - 1.0)
-        if sum(parameter_changes < 1e-3):
-            itc = k
-            break
-    if itc == -1:
-        itc = number_of_iterations
+    return day, hours, minutes, seconds
 
-    return itc
+
+def str2vec(string: str, separator: str) -> np.ndarray:
+    return np.array([float(element) for element in string.split(separator)])
+
+
+def unvectorize_matrix(vectorized_matrix: np.ndarray, dimensions: list[int]) -> np.ndarray:
+
+    rows, columns = dimensions
+    if rows*columns != len(vectorized_matrix):
+        raise ValueError('(unvectorize_matrix): Dimensions provided incompatible with vectorized matrices encountered')
+
+    unvectorized_matrix = np.zeros(dimensions)
+    for idx in range(rows): unvectorized_matrix[idx,:] = vectorized_matrix[columns*idx:columns*(idx+1)]
+
+    return unvectorized_matrix
+
+
+def vectorize_matrix(matrix: np.ndarray) -> np.ndarray:
+
+    n = len(matrix[:,0])
+
+    vectorized_matrix = matrix[0,:]
+    for idx in range(1,n):
+        vectorized_matrix = np.concatenate((vectorized_matrix, matrix[idx,:]), 0)
+
+    return vectorized_matrix
+
+
+def write_matrix_history_to_file(result: dict[float, np.ndarray], filename: str) -> None:
+
+    key_list = list(result.keys())
+    new_dict = dict.fromkeys(key_list)
+    for key in key_list: new_dict[key] = vectorize_matrix(result[key])
+
+    save2txt(new_dict, filename)
+
+    return
+
+
+def write_matrix_to_file(matrix: np.ndarray, filename: str) -> None:
+
+    matrix_str = ''
+    rows, columns = matrix.shape
+
+    for row in range(rows):
+        matrix_str = matrix_str + str(matrix[row,0])
+        for column in range(1,columns):
+            matrix_str = matrix_str + ' ' + str(matrix[row,column])
+        matrix_str = matrix_str + '\n'
+
+    with open(filename, 'w') as file: file.write(matrix_str)
+
+    return

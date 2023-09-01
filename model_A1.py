@@ -47,6 +47,9 @@ save = True
 generate_ephemeris_file = True
 checks = [0, 0, 0, 0, 0]
 
+# Ephemeris
+eph_subdir = ''
+
 ########################################################################################################################
 
 if sum(checks) > 0:
@@ -68,10 +71,8 @@ bodies = get_solar_system(model)
 # DEFINE PROPAGATION
 if verbose: print('Setting up propagation...')
 initial_epoch = 0.0
-initial_state = spice.get_body_cartesian_state_at_epoch('Phobos', 'Mars', 'J2000', 'None', 0.0)
-initial_state = read_vector_history_from_file('ephemeris/new/translation-b.eph')[initial_epoch]
-simulation_time = 3500.0*constants.JULIAN_DAY
-simulation_time = list(read_vector_history_from_file('ephemeris/new/translation-b.eph').keys())[-1]
+initial_state = read_vector_history_from_file('ephemeris/rkf108-dt300/translation-b.eph')[initial_epoch]
+simulation_time = list(read_vector_history_from_file('ephemeris/rkf108-dt300/translation-b.eph').keys())[-1]
 if retrieve_dependent_variables or generate_ephemeris_file: dependent_variables = get_list_of_dependent_variables(model, bodies)
 else: dependent_variables = []
 propagator_settings = get_propagator_settings(model, bodies, initial_epoch, initial_state, simulation_time, dependent_variables)
@@ -102,7 +103,7 @@ if save:
 if generate_ephemeris_file:
 
     if verbose: print('Generating ephemeris file...')
-    eph_dir = os.getcwd() + '/ephemeris/new/'
+    eph_dir = os.getcwd() + '/ephemeris/' + eph_subdir
     if model == 'S': filename = 'translation-s.eph'
     else: filename = 'translation-a.eph'
     save2txt(simulator.state_history, eph_dir + filename)

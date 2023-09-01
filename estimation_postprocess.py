@@ -55,7 +55,7 @@ if post_process_single_estimation:
     if convert_residuals_to_rsw:
         residual_statistical_indicators_per_iteration.append(read_vector_history_from_file(read_dir + 'residual-indicators-per-iteration-rsw.dat'))
 
-    parameter_evolution_array = result2array(parameter_evolution)
+    parameter_evolution_array = dict2array(parameter_evolution)
     parameter_evolution_array = settings.convert_libration_amplitude(parameter_evolution_array)
     number_of_iterations = int(parameter_evolution_array.shape[0] - 1)
 
@@ -64,7 +64,7 @@ if post_process_single_estimation:
 
     if plot_observations:
 
-        observation_array = result2array(observation_history)
+        observation_array = dict2array(observation_history)
 
         # VISUALIZATION OF OBSERVATIONS
         plt.figure()
@@ -81,8 +81,8 @@ if post_process_single_estimation:
 
         # CARTESIAN RESIDUAL HISTORIES AND INDICATORS FOR ALL ITERATIONS
 
-        residual_history_array = result2array(residual_histories[0])
-        indicators_array = result2array(residual_statistical_indicators_per_iteration[0])
+        residual_history_array = dict2array(residual_histories[0])
+        indicators_array = dict2array(residual_statistical_indicators_per_iteration[0])
         for k in range(number_of_iterations+1):
             if k == 0: title = 'Pre-fit residual history'
             else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
@@ -139,8 +139,8 @@ if post_process_single_estimation:
 
         # NORMED RESIDUAL HISTORIES AND INDICATORS FOR ALL ITERATIONS
 
-        residual_history_array = result2array(residual_histories[1])
-        indicators_array = result2array(residual_statistical_indicators_per_iteration[1])
+        residual_history_array = dict2array(residual_histories[1])
+        indicators_array = dict2array(residual_statistical_indicators_per_iteration[1])
         for k in range(number_of_iterations+1):
             if k == 0: title = 'Pre-fit residual history'
             else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
@@ -169,8 +169,8 @@ if post_process_single_estimation:
 
         # RSW RESIDUAL HISTORIES AND INDICATORS FOR ALL ITERATIONS
 
-        residual_history_array = result2array(residual_histories[-1])
-        indicators_array = result2array(residual_statistical_indicators_per_iteration[-1])
+        residual_history_array = dict2array(residual_histories[-1])
+        indicators_array = dict2array(residual_statistical_indicators_per_iteration[-1])
         for k in range(number_of_iterations + 1):
             if k == 0: title = 'Pre-fit residual history'
             else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
@@ -398,7 +398,7 @@ if post_process_estimation_duration_batch:
             residual_statistical_indicators_per_iteration.append(
                 read_vector_history_from_file(current_dir + 'residual-indicators-per-iteration-rsw.dat'))
 
-        parameter_evolution_array = result2array(parameter_evolution)
+        parameter_evolution_array = dict2array(parameter_evolution)
         parameter_evolution_array = settings.convert_libration_amplitude(parameter_evolution_array)
         number_of_iterations = int(parameter_evolution_array.shape[0] - 1)
 
@@ -409,15 +409,15 @@ if post_process_estimation_duration_batch:
             data_matrix[idx,2] = lines[-1].split(' ')[-1].replace('\n', '')
 
         # RESIDUALS INDICATORS IN ALL EXISTING FORMATS (CART, NORM, RSW). Note: We need to keep shifting things to the right with the extras.
-        data_matrix[idx, 3:15] = result2array(residual_statistical_indicators_per_iteration[0])[-1,1:].reshape([1,12])
+        data_matrix[idx, 3:15] = dict2array(residual_statistical_indicators_per_iteration[0])[-1,1:].reshape([1,12])
         if norm_position_residuals:
-            data_matrix[idx, 15:19] = result2array(residual_statistical_indicators_per_iteration[1])[-1,1:].reshape([1,4])
+            data_matrix[idx, 15:19] = dict2array(residual_statistical_indicators_per_iteration[1])[-1,1:].reshape([1,4])
             extra_norm_res = 4
         else:
             extra_norm_res = 0
 
         if convert_residuals_to_rsw:
-            data_matrix[idx, 15+extra_norm_res:27+extra_norm_res] = result2array(residual_statistical_indicators_per_iteration[-1])[-1,1:].reshape([1,12])
+            data_matrix[idx, 15+extra_norm_res:27+extra_norm_res] = dict2array(residual_statistical_indicators_per_iteration[-1])[-1,1:].reshape([1,12])
             extra_rsw_res = 12
         else:
             extra_rsw_res = 0
@@ -443,7 +443,7 @@ if post_process_estimation_duration_batch:
         for k in range(int(number_of_parameters - 1)):
             data_matrix[idx,idx1+k] = parameter_evolution_array[-1,7+k] - true_parameters[6+k]
 
-    save_matrix_to_file(data_matrix, batch_dir + 'batch_analysis_matrix.dat')
+    write_matrix_to_file(data_matrix, batch_dir + 'batch_analysis_matrix.dat')
 
     # PLOTS
     xlabel = 'Duration of estimated arc [days]'
@@ -504,17 +504,43 @@ if post_process_estimation_duration_batch:
 
     if norm_position_residuals:
 
+        # temp = dict2array(read_vector_history_from_file('benchmark_errors/A1/2023-08-08 22:02:22.057801/rkdp-dt270/errors.dat'))
+        # errors_rkdp_270 = np.zeros([len(temp[temp[:,0] <= max(data_matrix[:,0]),0]), 2])
+        # errors_rkdp_270[:,0] = temp[temp[:,0] <= max(data_matrix[:,0]),0]
+        # errors_rkdp_270[:,1] = norm_rows(temp[temp[:,0] <= max(data_matrix[:,0]),1:4])
+        #
+        # temp = dict2array(read_vector_history_from_file('benchmark_errors/B/2023-08-20 17:51:19.208586/rkf1210-dt210/errors.dat'))
+        # errors_rkf1210_210 = np.zeros([len(temp[temp[:,0] <= max(data_matrix[:,0]),0]), 2])
+        # errors_rkf1210_210[:,0] = temp[temp[:,0] <= max(data_matrix[:,0]), 0]
+        # errors_rkf1210_210[:,1] = norm_rows(temp[temp[:,0] <= max(data_matrix[:,0]), 1:4])
+        #
+        # temp = dict2array(read_vector_history_from_file('benchmark_errors/B/2023-08-20 20:56:42.577178/rkf1210-dt240/errors.dat'))
+        # errors_rkf1210_240 = np.zeros([len(temp[temp[:,0] <= max(data_matrix[:,0]),0]), 2])
+        # errors_rkf1210_240[:,0] = temp[temp[:,0] <= max(data_matrix[:,0]), 0]
+        # errors_rkf1210_240[:,1] = norm_rows(temp[temp[:, 0] <= max(data_matrix[:,0]), 1:4])
+        #
+        # temp = dict2array(read_vector_history_from_file('benchmark_errors/B/2023-08-21 12:38:03.864809/rkf108-dt300/errors.dat'))
+        # errors_rkf108_300 = np.zeros([len(temp[temp[:,0] <= max(data_matrix[:,0]),0]), 2])
+        # errors_rkf108_300[:,0] = temp[temp[:,0] <= max(data_matrix[:,0]), 0]
+        # errors_rkf108_300[:,1] = norm_rows(temp[temp[:,0] <= max(data_matrix[:,0]), 1:4])
+
         # Normed residuals
         plt.figure()
         plt.semilogy(data_matrix[:,0] / 86400.0, data_matrix[:,15] * 1e2, marker = '.', color = 'k', ls = '--', label = 'Min/Max')
         plt.semilogy(data_matrix[:,0] / 86400.0, data_matrix[:,16] * 1e2, marker = '.', label = 'Mean')
-        plt.semilogy(data_matrix[:,0] / 86400.0, data_matrix[:,17] * 1e2, marker = '.', label = 'RMS')
+        plt.semilogy(data_matrix[:,0] / 86400.0, data_matrix[:,17] * 1e2, marker = '.', label = 'Residual RMS')
         plt.semilogy(data_matrix[:,0] / 86400.0, data_matrix[:,18] * 1e2, marker = '.', color = 'k', ls = '--')
+        # plt.semilogy(errors_rkdp_270[:,0] / 86400.0, errors_rkdp_270[:,1] * 1e2, marker = '.', label = r'RKDP7(8) with $\Delta t = 4.5$min')
+        # plt.semilogy(errors_rkf1210_210[:,0] / 86400.0, errors_rkf1210_210[:,1] * 1e2, marker='.', label = r'RKF10(12) with $\Delta t = 3.5$min')
+        # plt.semilogy(errors_rkf1210_240[:,0] / 86400.0, errors_rkf1210_240[:,1] * 1e2, marker='.', label = r'RKF10(12) with $\Delta t = 4$min')
+        # plt.semilogy(errors_rkf108_300[:,0] / 86400.0, errors_rkf108_300[:,1] * 1e2, marker='.', label = r'RKF8(10) with $\Delta t = 5$min')
+        # plt.semilogy(data_matrix[:, 0] / 86400.0, data_matrix[:, 15] * 1e2, marker='.', color='k', linewidth=5, label = 'Minimum residual')
+        # plt.semilogy(data_matrix[:, 0] / 86400.0, data_matrix[:, 17] * 1e2 / 1e2, marker='.', color='r', linewidth=5, label = '2 orders of magnitude below residual RMS')
         plt.grid()
         plt.legend()
         plt.xlabel(xlabel)
         plt.ylabel(r'$|\vec\varepsilon|$ [cm]')
-        plt.title('Post-fit residuals indicators (normed)')
+        plt.title('RMS of normed post-fit residuals and integration error')
 
     if convert_residuals_to_rsw:
 
@@ -588,17 +614,18 @@ if post_process_estimation_duration_batch:
 
     # State vector (RSW)
     plt.figure()
-    plt.plot(data_matrix[:,0] / 86400.0, 100.0 * abs(data_matrix[:,21+extra]) / r0, marker = '.', markersize = ms, label = r'$\Delta R_o$')
-    plt.plot(data_matrix[:,0] / 86400.0, 100.0 * abs(data_matrix[:,22+extra]) / r0, marker = '.', markersize = ms, label = r'$\Delta S_o$')
-    plt.plot(data_matrix[:,0] / 86400.0, 100.0 * abs(data_matrix[:,23+extra]) / r0, marker = '.', markersize = ms, label = r'$\Delta W_o$')
-    plt.plot(data_matrix[:,0] / 86400.0, 100.0 * abs(data_matrix[:,24+extra]) / v0, marker = 'x', ls = 'dashed', label = r'$\Delta v_{r,o}$')
-    plt.plot(data_matrix[:,0] / 86400.0, 100.0 * abs(data_matrix[:,25+extra]) / v0, marker = 'x', ls = 'dashed', label = r'$\Delta v_{s,o}$')
-    plt.plot(data_matrix[:,0] / 86400.0, 100.0 * abs(data_matrix[:,26+extra]) / v0, marker = 'x', ls = 'dashed', label = r'$\Delta v_{w,o}$')
-    plt.yscale('log')
+    # plt.plot(data_matrix[:,0] / 86400.0, 100.0 * abs(data_matrix[:,21+extra]) / r0, marker = '.', markersize = ms, label = r'$\Delta R_o$')
+    plt.plot(data_matrix[:,0] / 86400.0, 100.0 * data_matrix[:,22+extra], marker = '.', markersize = ms, label = r'$\Delta S_o$')
+    # plt.plot(data_matrix[:,0] / 86400.0, 100.0 * abs(data_matrix[:,23+extra]) / r0, marker = '.', markersize = ms, label = r'$\Delta W_o$')
+    # plt.plot(data_matrix[:,0] / 86400.0, 100.0 * abs(data_matrix[:,24+extra]) / v0, marker = 'x', ls = 'dashed', label = r'$\Delta v_{r,o}$')
+    # plt.plot(data_matrix[:,0] / 86400.0, 100.0 * abs(data_matrix[:,25+extra]) / v0, marker = 'x', ls = 'dashed', label = r'$\Delta v_{s,o}$')
+    # plt.plot(data_matrix[:,0] / 86400.0, 100.0 * abs(data_matrix[:,26+extra]) / v0, marker = 'x', ls = 'dashed', label = r'$\Delta v_{w,o}$')
+    # plt.yscale('log')
     plt.grid()
     plt.legend()
     plt.xlabel(xlabel)
-    plt.ylabel(r'$\Delta\vec x_o$ [% of $|\vec r_o|$ and $|\vec v_o|$]')
+    # plt.ylabel(r'$\Delta\vec x_o$ [% of $|\vec r_o|$ and $|\vec v_o|$]')
+    plt.ylabel(r'$\Delta\vec x_o$ [cm]')
     plt.title('Error in estimated initial state w.r.t. truth')
 
     if length_of_estimated_state_vector > 6:

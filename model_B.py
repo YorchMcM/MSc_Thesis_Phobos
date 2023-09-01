@@ -39,14 +39,14 @@ from Auxiliaries import *
 
 # Dynamics
 average_mean_motion = 0.0002278563609852602
-phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, longitude slope goes down)
+# phobos_mean_rotational_rate = default_phobos_mean_rotational_rate  # In rad/s (more of this number, longitude slope goes down)
 
 # Execution
 verbose = True
 retrieve_dependent_variables = True
 save = True
 simulate_and_save_full_dynamics = False
-generate_ephemeris_file = False
+generate_ephemeris_file = True
 check_undamped = False
 checks = [0, 0, 0, 0, 0, 0]
 
@@ -148,11 +148,11 @@ if generate_ephemeris_file:
     #     ephemeris_state_history = damping_results.forward_backward_states[-1][1] | ephemeris_simulator.state_history
     # else: ephemeris_history = full_state_history
     ephemeris_history = damping_results.forward_backward_states[-1][1]
-    eph_dir = os.getcwd() + '/ephemeris/new/'
+    eph_dir = os.getcwd() + '/ephemeris/rkf108-dt300/'
     save2txt(extract_elements_from_history(ephemeris_history, [0, 1, 2, 3, 4, 5]), eph_dir + 'translation-b.eph')
     save2txt(extract_elements_from_history(ephemeris_history, [6, 7, 8, 9, 10, 11, 12]), eph_dir + 'rotation-b.eph')
     if retrieve_dependent_variables:
-        save2txt(damping_results.forward_backward_dependent_variables[-1][1], eph_dir + '/associated-dependents/b.dat')
+        save2txt(damping_results.forward_backward_dependent_variables[-1][1], eph_dir + 'associated-dependents/b.dat')
 
 
 # POST PROCESS / CHECKS - THIS IS ONLY POSSIBLE IF THE APPROPRIATE DEPENDENT VARIABLES ARE RETRIEVED.

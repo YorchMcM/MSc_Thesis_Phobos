@@ -39,7 +39,7 @@ from Auxiliaries import *
 
 # Dynamics
 average_mean_motion = 0.0002278563609852602
-phobos_mean_rotational_rate = 0.000228035245  # In rad/s (more of this number, longitude slope goes down)
+phobos_mean_rotational_rate = default_phobos_mean_rotational_rate  # In rad/s (more of this number, longitude slope goes down)
 
 # Execution
 verbose = True

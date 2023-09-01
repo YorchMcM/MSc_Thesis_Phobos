@@ -148,8 +148,8 @@ for estimation_idx in range(settings.number_of_estimations):
                                                               bodies)
 
     # CREATE YOUR UNIVERSE FOR ESTIMATION
-    translational_ephemeris_file, TRASH = retrieve_ephemeris_files(estimation_model)
-    bodies = get_solar_system(estimation_model, translational_ephemeris_file)
+    translational_ephemeris_file, TRASH = retrieve_ephemeris_files(estimation_model, use_new = True)
+    bodies = get_solar_system(estimation_model)
 
     # ESTIMATION DYNAMICS
     true_initial_state = settings.get_initial_state('true')  # Here, the observation ephemeris are used to retrieve the state.
@@ -208,7 +208,7 @@ for estimation_idx in range(settings.number_of_estimations):
 
     if save:
         with open(save_dir + 'log.txt', 'a') as file:
-            file.write('\n\nEXECUTION\n· Runtime: ' + str(tac - tic) + '\n· Iterations to convergence: ' + str(get_itc(parameter_evolution)))
+            file.write('\n\nEXECUTION\n· Runtime: ' + str(tac - tic))
 
     if apply_perturbation_in_rsw:
 
@@ -241,8 +241,8 @@ for estimation_idx in range(settings.number_of_estimations):
         if convert_residuals_to_rsw:
             save2txt(residual_statistical_indicators_per_iteration[-1], save_dir + 'residual-indicators-per-iteration-rsw.dat')
         save2txt(observation_history, save_dir + 'observation-history.dat')
-        save_matrix_to_file(estimation_output.covariance, save_dir + 'covariance-matrix.cov')
-        save_matrix_to_file(estimation_output.correlations, save_dir + 'correlation-matrix.cor')
+        write_matrix_to_file(estimation_output.covariance, save_dir + 'covariance-matrix.cov')
+        write_matrix_to_file(estimation_output.correlations, save_dir + 'correlation-matrix.cor')
 
         if save_state_history_per_iteration:
             for idx, simulator in enumerate(estimation_output.simulation_results_per_iteration):
@@ -250,8 +250,8 @@ for estimation_idx in range(settings.number_of_estimations):
 
         if apply_perturbation_in_rsw:
             if true_translational_state is not None:
-                save_matrix_to_file(rsw_covariance, save_dir + 'rsw-covariance.cov')
-                save_matrix_to_file(rsw_correlation, save_dir + 'rsw-correlations.cor')
+                write_matrix_to_file(rsw_covariance, save_dir + 'rsw-covariance.cov')
+                write_matrix_to_file(rsw_correlation, save_dir + 'rsw-correlations.cor')
 
 
 if post_process_in_this_file:
@@ -260,7 +260,7 @@ if post_process_in_this_file:
 
     print('Generating plots...')
 
-    parameter_evolution_array = result2array(parameter_evolution)
+    parameter_evolution_array = dict2array(parameter_evolution)
     # parameter_evolution_array = settings.convert_libration_amplitude(parameter_evolution_array)
     number_of_iterations = int(parameter_evolution_array.shape[0] - 1)
 
@@ -269,7 +269,7 @@ if post_process_in_this_file:
 
     if plot_observations:
 
-        observation_array = result2array(observation_history)
+        observation_array = dict2array(observation_history)
 
         # VISUALIZATION OF OBSERVATIONS
         plt.figure()
@@ -286,8 +286,8 @@ if post_process_in_this_file:
 
         # CARTESIAN RESIDUAL HISTORIES AND INDICATORS FOR ALL ITERATIONS
 
-        residual_history_array = result2array(residual_histories[0])
-        indicators_array = result2array(residual_statistical_indicators_per_iteration[0])
+        residual_history_array = dict2array(residual_histories[0])
+        indicators_array = dict2array(residual_statistical_indicators_per_iteration[0])
         for k in range(number_of_iterations+1):
             if k == 0: title = 'Pre-fit residual history'
             else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
@@ -344,8 +344,8 @@ if post_process_in_this_file:
 
         # NORMED RESIDUAL HISTORIES AND INDICATORS FOR ALL ITERATIONS
 
-        residual_history_array = result2array(residual_histories[1])
-        indicators_array = result2array(residual_statistical_indicators_per_iteration[1])
+        residual_history_array = dict2array(residual_histories[1])
+        indicators_array = dict2array(residual_statistical_indicators_per_iteration[1])
         for k in range(number_of_iterations+1):
             if k == 0: title = 'Pre-fit residual history'
             else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
@@ -374,8 +374,8 @@ if post_process_in_this_file:
 
         # RSW RESIDUAL HISTORIES AND INDICATORS FOR ALL ITERATIONS
 
-        residual_history_array = result2array(residual_histories[-1])
-        indicators_array = result2array(residual_statistical_indicators_per_iteration[-1])
+        residual_history_array = dict2array(residual_histories[-1])
+        indicators_array = dict2array(residual_statistical_indicators_per_iteration[-1])
         for k in range(number_of_iterations + 1):
             if k == 0: title = 'Pre-fit residual history'
             else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
