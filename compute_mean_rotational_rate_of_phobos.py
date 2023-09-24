@@ -35,8 +35,9 @@ simulation_time = 10.0 * dissipation_times[-1]
 dependent_variables = get_list_of_dependent_variables('B', bodies)
 
 what_i_have_until_now = np.array([[0.00022800, 0.00022802, 0.000228035245, 0.00022804, 0.00022806],
-                                  [5.9276800826553785e-28, 5.9266320741846535e-28, 5.925816279067625e-28, 5.9255588507623225e-28, 0.0],
-                                  [4.11393528e-4, 4.113471594e-4, 4.11328847e-4, 4.113199124e-4, 0.0]]).T
+                                  [5.9276800826553785e-28, 5.9266320741846535e-28, 5.925816279067625e-28, 5.9255588507623225e-28, 5.924460619029678e-28],
+                                  [4.113935280189048e-4, 4.11357159409744e-4, 4.1132884697978636e-4, 4.1131991244376404e-4, 4.1128179405494424e-4]]).T
+
 
 def propagate_and_damp_trajectory(mean_rotational_rate: float) ->  \
         numerical_simulation.propagation.RotationalProperModeDampingResults:
@@ -58,28 +59,39 @@ def propagate_and_damp_trajectory(mean_rotational_rate: float) ->  \
 
     return damping_results, slope_squared
 
-rotational_rates = np.array([0.000228000000,
-                             0.000228020000,
-                             0.000228035245,
-                             0.000228040000,
-                             0.000228040000])
+rotational_rates = 2.28e-4 + np.array([0.0000,
+                                       2.0000,
+                                       3.5245,
+                                       4.0000,
+                                       6.0000,
+                                       8.0000,
+                                       10.0000]) * 1e-8
+rotational_rates = rotational_rates[4:]
 
 f = np.zeros(len(rotational_rates))
+dphi = np.zeros(len(rotational_rates))
 
 for idx, rotational_rate in enumerate(rotational_rates):
 
     print('Performing iteration ' + str(idx+1) + '/' + str(len(rotational_rates)) + ':\nRotational rate: ' + str(rotational_rate))
     damping_results, slope_squared = propagate_and_damp_trajectory(rotational_rate)
     f[idx] = slope_squared
-    error = np.sqrt(slope_squared) * simulation_time*360 / TWOPI
-    print('Slope squared: ' + str(slope_squared) + ', which is something like ' + str(error) + ' degree deviation in 9 years and 4 months.\n')
+    dphi[idx] = np.sqrt(slope_squared) * simulation_time * 360.0 / TWOPI
+    print('Slope squared: ' + str(slope_squared) + ', which is something like ' + str(dphi[idx]) + ' degree deviation in 9 years and 4 months.\n')
 
 plt.figure()
-plt.plot(rotational_rates, f, marker = '.')
-plt.xlabel(r'Rotational rate, $\omega$ [rad/s]')
-plt.ylabel(r'$b^2(\omega)$ [rad/s]')
-plt.title(r'Slope $b$ of the longitude of the Phobos-fixed position of Mars')
+plt.plot((what_i_have_until_now[:,0] - 0.000228) * 86400.0, what_i_have_until_now[:,1] * 1e28, marker = '.')
+plt.grid()
+plt.xlabel(r'Rotational rate, $\omega$ [rad/day + 19.7]')
+plt.ylabel(r'$b^2(\omega)$ [$\times10^{-28}$ (rad/s)$^2$]')
+plt.title(r'Squared slope $b$ of the longitude of the Phobos-fixed position of Mars')
 
+plt.figure()
+plt.plot((what_i_have_until_now[:,0] - 0.000228) * 86400.0, what_i_have_until_now[:,2] * 1e4, marker = '.')
+plt.grid()
+plt.xlabel(r'Rotational rate, $\omega$ [rad/day + 19.7]')
+plt.ylabel(r'$\Delta\phi$ [$\times 10^{-4}$ º]')
+plt.title(r'Error of the Phobos-fixed longitude of Mars after 9 years and 4 months')
 
 #
 # # Things that depend on the mean rotational rate of Phobos. The iterative process starts here.

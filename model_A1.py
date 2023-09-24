@@ -44,7 +44,7 @@ include_libration = True
 verbose = True
 retrieve_dependent_variables = True
 save = True
-generate_ephemeris_file = True
+generate_ephemeris_file = False
 checks = [0, 0, 0, 0, 0]
 
 # Ephemeris
@@ -71,12 +71,19 @@ bodies = get_solar_system(model)
 # DEFINE PROPAGATION
 if verbose: print('Setting up propagation...')
 initial_epoch = 0.0
-initial_state = read_vector_history_from_file('ephemeris/rkf108-dt300/translation-b.eph')[initial_epoch]
-simulation_time = list(read_vector_history_from_file('ephemeris/rkf108-dt300/translation-b.eph').keys())[-1]
+initial_state = read_vector_history_from_file('ephemeris/' + eph_subdir + 'translation-b.eph')[initial_epoch]
+simulation_time = list(read_vector_history_from_file('ephemeris/' + eph_subdir + 'translation-b.eph').keys())[-1]
 if retrieve_dependent_variables or generate_ephemeris_file: dependent_variables = get_list_of_dependent_variables(model, bodies)
 else: dependent_variables = []
-propagator_settings = get_propagator_settings(model, bodies, initial_epoch, initial_state, simulation_time, dependent_variables)
 
+# coefficients = propagation_setup.integrator.CoefficientSets.rkf_1210
+# integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(300.0,
+#                                                                                   coefficients,
+#                                                                                   300.0,
+#                                                                                   300.0,
+#                                                                                   np.inf, np.inf)
+# propagator_settings = get_propagator_settings(model, bodies, initial_epoch, initial_state, simulation_time, dependent_variables, integrator_settings = integrator_settings)
+propagator_settings = get_propagator_settings(model, bodies, initial_epoch, initial_state, simulation_time, dependent_variables)
 
 # SIMULATE DYNAMICS
 if verbose: print('Simulating dynamics...')
@@ -104,10 +111,13 @@ if generate_ephemeris_file:
 
     if verbose: print('Generating ephemeris file...')
     eph_dir = os.getcwd() + '/ephemeris/' + eph_subdir
+    os.makedirs(eph_dir, exist_ok = True)
     if model == 'S': filename = 'translation-s.eph'
     else: filename = 'translation-a.eph'
     save2txt(simulator.state_history, eph_dir + filename)
-    save2txt(simulator.dependent_variable_history, eph_dir + 'associated-dependents/' + model.lower() + '.dat')
+    if retrieve_dependent_variables:
+        os.makedirs(eph_dir + 'associated-dependents/', exist_ok=True)
+        save2txt(simulator.dependent_variable_history, eph_dir + 'associated-dependents/' + model.lower() + '.dat')
 
 
 # POST PROCESS / CHECKS

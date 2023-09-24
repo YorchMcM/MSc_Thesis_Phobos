@@ -8,8 +8,8 @@
 
 · ESTIMATION MODEL: 			A1
 · INITIAL ESTIMATION EPOCH:		1.0 YEAR
-· DURATION OF ESTIMATED ARC:	1.0, 7.0, 14.0, 21.0, 30.0, 45.0, 60.0, 75.0, 90.0 DAY
-· ESTIMATED PARAMETERS:			initial state, C20, C22  	# Options: initial state, A, C20 or C22, or a combination thereof (for example "initial state, A" or "initial state, C20").
+· DURATION OF ESTIMATED ARC:	200.0 DAY
+· ESTIMATED PARAMETERS:			initial state, C20  	# Options: initial state, A, C20 or C22, or a combination thereof (for example "initial state, A" or "initial state, C20").
 · NORM POSITION RESIDUALS:		True
 · CONVERT RESIDUALS TO RSW:		True
 
@@ -29,7 +29,7 @@
 ####    LS CONVERGENCE SETTINGS    ####
 #######################################
 
-· MAXIMUM NUMBER OF ITERATIONS:				15
+· MAXIMUM NUMBER OF ITERATIONS:				10
 · MINIMUM RESIDUAL CHANGE:					0.0
 · MINIMUM RESIDUAL:							0.0
 · NUMBER OF ITERATIONS WITHOUT IMPROVEMENT:	2
@@ -51,10 +51,10 @@
 ####################################
 
 · TEST MODE: 								False
-· INITIAL POSITION PERTURBATION: 			200.0, -800.0, 100.0
+· INITIAL POSITION PERTURBATION: 			-200.0, 500.0, 300.0
 · INITIAL VELOCITY PERTURBATION: 			0.02, 0.01, -0.07
-· INITIAL ORIENTATION PERTURBATION: 		500.0, -800.0, 100.0
-· INITIAL ANGULAR VELOCITY PERTURBATION: 	0.02, 0.01, -0.07
+· INITIAL ORIENTATION PERTURBATION: 		0.002, 0.0004, -0.0003, 0.0004
+· INITIAL ANGULAR VELOCITY PERTURBATION: 	0.0000001, 0.00000002, -0.00007
 · APPLY PERTURBATION IN RSW:				True
 
 
@@ -64,4 +64,5 @@
 
 · SAVE RESULTS: 					True
 · SAVE STATE HISTORY PER ITERATION: True
+· SIMULATION NAME:					long batch
 

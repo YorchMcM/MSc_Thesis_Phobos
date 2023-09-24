@@ -4,7 +4,7 @@ Some scale for things:
     · Orbital period : 5h
     · Velocity of Phobos : 3 km/s
 '''
-
+import os
 from shutil import copyfile
 
 from Auxiliaries import *
@@ -12,14 +12,11 @@ from Auxiliaries import *
 from tudatpy.kernel.numerical_simulation import estimation, estimation_setup, Estimator
 from tudatpy.kernel.numerical_simulation.estimation_setup import observation, parameter
 
-eccentricity = 0.015034167790105173
 # base_dir = os.getcwd() + '/estimation-results/'
 base_dir = os.getcwd() + '/estimation-results/'
 
 print('Reading input file...')
 settings = EstimationSettings(os.getcwd() + '/estimation-settings.inp')
-
-true_parameters = settings.get_true_parameters()
 
 ########################################################################################################################
 # SETTINGS COLLECTION
@@ -31,6 +28,7 @@ arc_durations = settings.estimation_settings['duration of estimated arc']
 estimated_parameters = settings.estimation_settings['estimated parameters']
 norm_position_residuals = settings.estimation_settings['norm position residuals']
 convert_residuals_to_rsw = settings.estimation_settings['convert residuals to rsw']
+# use_tudat_for_estimation = settings.estimation_settings['use tudat for estimation']
 
 # Observations
 observation_model = settings.observation_settings['observation model']
@@ -63,13 +61,11 @@ apply_perturbation_in_rsw = settings.test_functionalities['apply perturbation in
 # Execution
 save = settings.execution_settings['save results']
 save_state_history_per_iteration = settings.execution_settings['save state history per iteration']
+simulation_name = settings.execution_settings['simulation name']
 
 ########################################################################################################################
 
-if len(arc_durations) > 1:
-    batch = 'batch ' + str(datetime.now()) + '/'
-else:
-    batch = ''
+save_dir = settings.create_directory_infrastructure_and_retrieve_names(simulation_name = simulation_name)
 
 if not test_mode:
     apply_perturbation_in_rsw = False
@@ -81,10 +77,11 @@ if len(arc_durations) > 1:
 parameters_str = print_estimated_parameters(estimated_parameters)
 
 # CREATE YOUR UNIVERSE FOR OBSERVATION SIMULATION
-translational_ephemeris_file, rotational_ephemeris_file = retrieve_ephemeris_files(observation_model, use_new = True)
+translational_ephemeris_file, rotational_ephemeris_file = retrieve_ephemeris_files(observation_model)
 bodies = get_solar_system(observation_model, translational_ephemeris_file, rotational_ephemeris_file)
+true_parameters = settings.get_true_parameters(bodies)
 
-# OBSERVATION SIMULATION
+# OBSERVATION SETUP
 # Link set up
 link_ends = {observation.observed_body: observation.body_origin_link_end_id('Phobos')}
 link = observation.LinkDefinition(link_ends)
@@ -102,36 +99,23 @@ convergence_checker = estimation.estimation_convergence_checker(maximum_iteratio
 for estimation_idx in range(settings.number_of_estimations):
 
     duration_of_estimated_arc = arc_durations[estimation_idx]
-
-    if duration_of_estimated_arc == 90.0 * 86400.0:
-        convergence_checker = estimation.estimation_convergence_checker(maximum_iterations = 15,
-                                                                        minimum_residual_change = minimum_residual_change,
-                                                                        minimum_residual = minimum_residual,
-                                                                        number_of_iterations_without_improvement = number_of_iterations_without_improvement)
+    use_tudat_for_estimation = duration_of_estimated_arc <= 30.0 * constants.JULIAN_DAY and estimation_model == 'A1'
+    # settings.estimation_settings['duration of estimated arc'] = duration_of_estimated_arc
 
     print('\nEstimating an arc of ' + str(int(duration_of_estimated_arc / 86400.0)) + ' days.')
 
     if save:
-        estimation_folder = settings.get_estimation_type()
-        if estimation_folder != '':
-            estimation_folder = estimation_folder + '/'
-        if batch == '':
-            current_run = str(datetime.now()) + '/'
-        else:
-            current_run = 'estimation-time-' + str(int(duration_of_estimated_arc / 86400.0)) + '/'
-        save_dir = base_dir + estimation_folder + batch + current_run
-        if batch == '':
-            logs_dir = base_dir + estimation_folder + 'logs/'
-        else:
-            logs_dir = base_dir + estimation_folder + batch
-        os.makedirs(save_dir, exist_ok = True)
-        os.makedirs(logs_dir, exist_ok = True)
-        if batch == '':
-            copyfile(settings.source_file, save_dir + 'settings.log')
-        else:
-            with open(save_dir + 'settings.log', 'w') as file:
+
+        if 'batch' in save_dir:
+            current_run = 'estimation-time-' + str(int(duration_of_estimated_arc / 86400.0))
+            current_dir = save_dir + current_run + '/'
+            print('Estimation ' + str(estimation_idx) + '. Creating path to: ' + current_dir)
+            os.makedirs(current_dir, exist_ok=True)
+            with open(current_dir + 'settings.log', 'w') as file:
                 file.writelines(settings.batch_to_single_run(estimation_idx))
-        copyfile(settings.source_file, logs_dir + 'settings.log')
+        else:
+            current_dir = save_dir
+            os.makedirs(current_dir, exist_ok=True)
 
     print('Setting up estimation...')
 
@@ -148,8 +132,8 @@ for estimation_idx in range(settings.number_of_estimations):
                                                               bodies)
 
     # CREATE YOUR UNIVERSE FOR ESTIMATION
-    translational_ephemeris_file, TRASH = retrieve_ephemeris_files(estimation_model, use_new = True)
-    bodies = get_solar_system(estimation_model)
+    translational_ephemeris_file, rotational_ephemeris_file = retrieve_ephemeris_files(estimation_model)
+    bodies = get_solar_system(estimation_model, translational_ephemeris_file, rotational_ephemeris_file)
 
     # ESTIMATION DYNAMICS
     true_initial_state = settings.get_initial_state('true')  # Here, the observation ephemeris are used to retrieve the state.
@@ -158,10 +142,6 @@ for estimation_idx in range(settings.number_of_estimations):
 
     # PARAMETERS TO ESTIMATE
     parameters_to_estimate = get_parameter_set(estimated_parameters, bodies, propagator_settings, return_only_settings_list = False)
-
-    # ESTIMATION INPUT OBJECT
-    estimation_input = estimation.EstimationInput(observation_collection, convergence_checker = convergence_checker)
-    estimation_input.define_estimation_settings(save_state_history_per_iteration = save_state_history_per_iteration)
 
     # LOG
     # We will first save the log, before starting the possibly very long estimation process.
@@ -180,34 +160,54 @@ for estimation_idx in range(settings.number_of_estimations):
               '\n· Minimum residual: ' + str(minimum_residual) + '\n· Number of iterations without improvement: ' + \
               str(number_of_iterations_without_improvement)
 
-        with open(save_dir + 'log.txt', 'w') as file: file.write(log)
+        with open(current_dir + 'log.txt', 'w') as file: file.write(log)
 
+    if use_tudat_for_estimation:
 
-    # AND NOW WE CREATE THE ESTIMATOR OBJECT, WE PROPAGATE THE VARIATIONAL EQUATIONS AND WE ESTIMATE
-    print('Going into the depths of tudat...')
-    tic = time()
-    estimator = Estimator(
-        bodies,
-        parameters_to_estimate,
-        [observation_model_settings],
-        propagator_settings)
-    tac = time()
-    print('We\'re back! After', (tac - tic) / 60.0, 'min')
-    print('Performing estimation...')
-    tic = time()
-    estimation_output = estimator.perform_estimation(estimation_input)
-    tac = time()
-    print('Estimation completed. Time taken:', (tac - tic) / 60.0, 'min')
+        # ESTIMATION INPUT OBJECT
+        estimation_input = estimation.EstimationInput(observation_collection, convergence_checker=convergence_checker)
+        estimation_input.define_estimation_settings(save_state_history_per_iteration=save_state_history_per_iteration)
 
-    # WE EXTRACT THE RELEVANT INFORMATION FROM THE ESTIMATION OUTPUT AND SAVE IT IF REQUIRED
-    observation_history = get_observation_history(list(observation_times), observation_collection)
-    residual_histories, parameter_evolution, residual_statistical_indicators_per_iteration = \
-        extract_estimation_output(estimation_output,
-                                  settings,
-                                  estimation_idx)
+        # AND NOW WE CREATE THE ESTIMATOR OBJECT, WE PROPAGATE THE VARIATIONAL EQUATIONS AND WE ESTIMATE
+        print('Going into the depths of Tudat...')
+        tic = time()
+        estimator = Estimator(
+            bodies,
+            parameters_to_estimate,
+            [observation_model_settings],
+            propagator_settings)
+        tac = time()
+        print('We\'re back! After', (tac - tic) / 60.0, 'min')
+        print('Performing estimation...')
+        tic = time()
+        output = estimator.perform_estimation(estimation_input)
+        tac = time()
+        print('Estimation completed. Time taken:', (tac - tic) / 60.0, 'min')
+
+        # WE EXTRACT THE RELEVANT INFORMATION FROM THE ESTIMATION OUTPUT
+        observation_history = get_observation_history(list(observation_times), observation_collection)
+        residual_histories, parameter_evolution, residual_statistical_indicators = extract_estimation_output(output, settings, estimation_idx)
+
+    else:
+
+        print('Performing estimation...')
+        tic = time()
+        output_num = perform_numerical_estimation(bodies,
+                                                  propagator_settings,
+                                                  duration_of_estimated_arc,
+                                                  [observation_times, observation_collection, observation_model_settings],
+                                                  settings)
+        tac = time()
+        print('Estimation completed. Time taken:', (tac - tic) / 60.0, 'min')
+
+        output = output_num
+
+        # WE EXTRACT THE RELEVANT INFORMATION FROM THE ESTIMATION OUTPUT
+        residual_histories, parameter_evolution, residual_statistical_indicators = output.extract_results(estimation_idx)
+        observation_history = output.observation_history
 
     if save:
-        with open(save_dir + 'log.txt', 'a') as file:
+        with open(current_dir + 'log.txt', 'a') as file:
             file.write('\n\nEXECUTION\n· Runtime: ' + str(tac - tic))
 
     if apply_perturbation_in_rsw:
@@ -220,7 +220,7 @@ for estimation_idx in range(settings.number_of_estimations):
 
             RSW_R_I = inertial_to_rsw_rotation_matrix(true_translational_state)
             R = np.concatenate((np.concatenate((RSW_R_I, np.zeros([3, 3])), 1), np.concatenate((np.zeros([3, 3]), RSW_R_I), 1)), 0)
-            rsw_covariance = R @ estimation_output.covariance[:6,:6] @ R.T
+            rsw_covariance = R @ output.covariance[:6,:6] @ R.T
             rsw_correlation = covariance_to_correlation(rsw_covariance)
 
     if save:
@@ -229,29 +229,33 @@ for estimation_idx in range(settings.number_of_estimations):
 
         print('Saving results...')
 
-        save2txt(residual_histories[0], save_dir + 'residual-history-cart.dat')
+        save2txt(residual_histories[0], current_dir + 'residual-history-cart.dat')
         if norm_position_residuals:
-            save2txt(residual_histories[1], save_dir + 'residual-history-norm.dat')
+            save2txt(residual_histories[1], current_dir + 'residual-history-norm.dat')
         if convert_residuals_to_rsw:
-            save2txt(residual_histories[-1], save_dir + 'residual-history-rsw.dat')
-        save2txt(parameter_evolution, save_dir + 'parameter-evolution.dat')
-        save2txt(residual_statistical_indicators_per_iteration[0], save_dir + 'residual-indicators-per-iteration-cart.dat')
+            save2txt(residual_histories[-1], current_dir + 'residual-history-rsw.dat')
+        save2txt(parameter_evolution, current_dir + 'parameter-evolution.dat')
+        save2txt(residual_statistical_indicators[0], current_dir + 'residual-indicators-per-iteration-cart.dat')
         if norm_position_residuals:
-            save2txt(residual_statistical_indicators_per_iteration[1], save_dir + 'residual-indicators-per-iteration-norm.dat')
+            save2txt(residual_statistical_indicators[1], current_dir + 'residual-indicators-per-iteration-norm.dat')
         if convert_residuals_to_rsw:
-            save2txt(residual_statistical_indicators_per_iteration[-1], save_dir + 'residual-indicators-per-iteration-rsw.dat')
-        save2txt(observation_history, save_dir + 'observation-history.dat')
-        write_matrix_to_file(estimation_output.covariance, save_dir + 'covariance-matrix.cov')
-        write_matrix_to_file(estimation_output.correlations, save_dir + 'correlation-matrix.cor')
+            save2txt(residual_statistical_indicators[-1], current_dir + 'residual-indicators-per-iteration-rsw.dat')
+        save2txt(observation_history, current_dir + 'observation-history.dat')
+        write_matrix_to_file(output.covariance, current_dir + 'covariance-matrix.cov')
+        write_matrix_to_file(output.correlations, current_dir + 'correlation-matrix.cor')
 
         if save_state_history_per_iteration:
-            for idx, simulator in enumerate(estimation_output.simulation_results_per_iteration):
-                save2txt(simulator.dynamics_results.state_history, save_dir + 'state-history-iteration-' + str(idx) + '.dat')
+            for idx, thing in enumerate(output.simulation_results_per_iteration):
+                if use_tudat_for_estimation:
+                    state_history = thing.dynamics_results.state_history
+                else:
+                    state_history = thing
+                save2txt(state_history, current_dir + 'state-history-iteration-' + str(idx) + '.dat')
 
         if apply_perturbation_in_rsw:
             if true_translational_state is not None:
-                write_matrix_to_file(rsw_covariance, save_dir + 'rsw-covariance.cov')
-                write_matrix_to_file(rsw_correlation, save_dir + 'rsw-correlations.cor')
+                write_matrix_to_file(rsw_covariance, current_dir + 'rsw-covariance.cov')
+                write_matrix_to_file(rsw_correlation, current_dir + 'rsw-correlations.cor')
 
 
 if post_process_in_this_file:
@@ -287,53 +291,51 @@ if post_process_in_this_file:
         # CARTESIAN RESIDUAL HISTORIES AND INDICATORS FOR ALL ITERATIONS
 
         residual_history_array = dict2array(residual_histories[0])
-        indicators_array = dict2array(residual_statistical_indicators_per_iteration[0])
+        indicators_array = dict2array(residual_statistical_indicators[0])
         for k in range(number_of_iterations+1):
             if k == 0: title = 'Pre-fit residual history'
+            elif k == number_of_iterations: title = 'Estimation post-fit residual history'
             else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
             plt.figure()
-            plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0,
-                     residual_history_array[:,3*k+1], label='x')
-            plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0,
-                     residual_history_array[:,3*k+2], label='y')
-            plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0,
-                     residual_history_array[:,3*k+3], label='z')
+            plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, residual_history_array[:,3*k+1] * 100.0, label='x')
+            plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, residual_history_array[:,3*k+2] * 100.0, label='y')
+            plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, residual_history_array[:,3*k+3] * 100.0, label='z')
             plt.grid()
             plt.xlabel('Time since estimation start [days]')
-            plt.ylabel(r'$\vec\varepsilon_{e,i}$ [m]')
+            plt.ylabel(r'$\vec\varepsilon_{e,i}$ [cm]')
             plt.legend()
             plt.title(title)
 
         plt.figure()
-        plt.plot(indicators_array[:,0], indicators_array[:,1], marker = '.', color = 'k', ls = '--', label = r'Min/Max')
-        plt.plot(indicators_array[:,0], indicators_array[:,2], marker='.', color = colors[0], label = r'Mean')
-        plt.plot(indicators_array[:,0], indicators_array[:,3], marker='x', color = colors[1], label = r'RMS')
-        plt.plot(indicators_array[:,0], indicators_array[:,4], marker='.', color= 'k', ls='--')
+        plt.plot(indicators_array[:,0], indicators_array[:,1] * 100.0, marker = '.', color = 'k', ls = '--', label = r'Min/Max')
+        plt.plot(indicators_array[:,0], indicators_array[:,2] * 100.0, marker='.', color = colors[0], label = r'Mean')
+        plt.plot(indicators_array[:,0], indicators_array[:,3] * 100.0, marker='x', color = colors[1], label = r'RMS')
+        plt.plot(indicators_array[:,0], indicators_array[:,4] * 100.0, marker='.', color= 'k', ls='--')
         plt.grid()
         plt.xlabel('Iteration number')
-        plt.ylabel(r'$\mu$($x_e$) [m]')
+        plt.ylabel(r'$\mu$($x_e$) [cm]')
         plt.legend()
         plt.title('Post fit residual - $x$ component')
 
         plt.figure()
-        plt.plot(indicators_array[:,0], indicators_array[:,5], marker = '.', color = 'k', ls = '--', label = r'Min/Max')
-        plt.plot(indicators_array[:,0], indicators_array[:,6], marker='.', color = colors[0], label = r'Mean')
-        plt.plot(indicators_array[:,0], indicators_array[:,7], marker='x', color = colors[1], label = r'RMS')
-        plt.plot(indicators_array[:,0], indicators_array[:,8], marker='.', color= 'k', ls='--')
+        plt.plot(indicators_array[:,0], indicators_array[:,5] * 100.0, marker = '.', color = 'k', ls = '--', label = r'Min/Max')
+        plt.plot(indicators_array[:,0], indicators_array[:,6] * 100.0, marker='.', color = colors[0], label = r'Mean')
+        plt.plot(indicators_array[:,0], indicators_array[:,7] * 100.0, marker='x', color = colors[1], label = r'RMS')
+        plt.plot(indicators_array[:,0], indicators_array[:,8] * 100.0, marker='.', color= 'k', ls='--')
         plt.grid()
         plt.xlabel('Iteration number')
-        plt.ylabel(r'$\mu$($y_e$) [m]')
+        plt.ylabel(r'$\mu$($y_e$) [cm]')
         plt.legend()
         plt.title('Post fit residual mean - $y$ component')
 
         plt.figure()
-        plt.plot(indicators_array[:,0], indicators_array[:,9], marker = '.', color = 'k', ls = '--', label = r'Min/Max')
-        plt.plot(indicators_array[:,0], indicators_array[:,10], marker='.', color = colors[0], label = r'Mean')
-        plt.plot(indicators_array[:,0], indicators_array[:,11], marker='x', color = colors[1], label = r'RMS')
-        plt.plot(indicators_array[:,0], indicators_array[:,12], marker='.', color= 'k', ls='--')
+        plt.plot(indicators_array[:,0], indicators_array[:,9] * 100.0, marker = '.', color = 'k', ls = '--', label = r'Min/Max')
+        plt.plot(indicators_array[:,0], indicators_array[:,10] * 100.0, marker='.', color = colors[0], label = r'Mean')
+        plt.plot(indicators_array[:,0], indicators_array[:,11] * 100.0, marker='x', color = colors[1], label = r'RMS')
+        plt.plot(indicators_array[:,0], indicators_array[:,12] * 100.0, marker='.', color= 'k', ls='--')
         plt.grid()
         plt.xlabel('Iteration number')
-        plt.ylabel(r'$\mu$($z_e$) [m]')
+        plt.ylabel(r'$\mu$($z_e$) [cm]')
         plt.legend()
         plt.title('Post fit residual mean - $z$ component')
 
@@ -345,26 +347,27 @@ if post_process_in_this_file:
         # NORMED RESIDUAL HISTORIES AND INDICATORS FOR ALL ITERATIONS
 
         residual_history_array = dict2array(residual_histories[1])
-        indicators_array = dict2array(residual_statistical_indicators_per_iteration[1])
+        indicators_array = dict2array(residual_statistical_indicators[1])
         for k in range(number_of_iterations+1):
             if k == 0: title = 'Pre-fit residual history'
+            elif k == number_of_iterations: title = 'Estimation post-fit residual history'
             else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
             plt.figure()
-            plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, residual_history_array[:,k+1])
+            plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, residual_history_array[:,k+1] * 100.0, marker = '.')
             plt.grid()
             plt.xlabel('Time since estimation start [days]')
-            plt.ylabel(r'|$\vec\varepsilon_e$| [m]')
+            plt.ylabel(r'|$\vec\varepsilon_e$| [cm]')
             plt.title(title)
 
         plt.figure()
-        plt.semilogy(indicators_array[:,0], indicators_array[:,1], marker = '.', color = 'k', ls = '--', label = r'Min/Max')
-        plt.semilogy(indicators_array[:,0], indicators_array[:,2], marker='.', color = colors[0], label = r'Mean')
-        plt.semilogy(indicators_array[:,0], indicators_array[:,3], marker='x', color = colors[1], label = r'RMS')
-        plt.semilogy(indicators_array[:,0], indicators_array[:,4], marker='.', color= 'k', ls='--')
+        plt.semilogy(indicators_array[:,0], indicators_array[:,1] * 100.0, marker = '.', color = 'k', ls = '--', label = r'Min/Max')
+        plt.semilogy(indicators_array[:,0], indicators_array[:,2] * 100.0, marker='.', color = colors[0], label = r'Mean')
+        plt.semilogy(indicators_array[:,0], indicators_array[:,3] * 100.0, marker='x', color = colors[1], label = r'RMS')
+        plt.semilogy(indicators_array[:,0], indicators_array[:,4] * 100.0, marker='.', color= 'k', ls='--')
         plt.grid()
         plt.legend()
         plt.xlabel('Iteration number')
-        plt.ylabel(r'Indicator [m]')
+        plt.ylabel(r'Indicator [cm]')
         plt.title('Post fit residual evolution - norm')
 
         print('\nNORMED RESIDUALS PFRI')
@@ -375,53 +378,51 @@ if post_process_in_this_file:
         # RSW RESIDUAL HISTORIES AND INDICATORS FOR ALL ITERATIONS
 
         residual_history_array = dict2array(residual_histories[-1])
-        indicators_array = dict2array(residual_statistical_indicators_per_iteration[-1])
+        indicators_array = dict2array(residual_statistical_indicators[-1])
         for k in range(number_of_iterations + 1):
             if k == 0: title = 'Pre-fit residual history'
+            elif k == number_of_iterations: title = 'Estimation post-fit residual history'
             else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
             plt.figure()
-            plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0,
-                     residual_history_array[:,3*k+1], label='R')
-            plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0,
-                     residual_history_array[:,3*k+2], label='S')
-            plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0,
-                     residual_history_array[:,3*k+3], label='W')
+            plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, residual_history_array[:,3*k+1] * 100.0, label='R')
+            plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, residual_history_array[:,3*k+2] * 100.0, label='S')
+            plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, residual_history_array[:,3*k+3] * 100.0, label='W')
             plt.grid()
             plt.xlabel('Time since estimation start [days]')
-            plt.ylabel(r'$\vec\varepsilon_{e,i}$ [m]')
+            plt.ylabel(r'$\vec\varepsilon_{e,i}$ [cm]')
             plt.legend()
             plt.title(title)
 
         plt.figure()
-        plt.plot(indicators_array[:,0], indicators_array[:,1], marker='.', color='k', ls='--', label=r'Min/Max')
-        plt.plot(indicators_array[:,0], indicators_array[:,2], marker='.', color=colors[0], label=r'Mean')
-        plt.plot(indicators_array[:,0], indicators_array[:,3], marker='x', color=colors[1], label=r'RMS')
-        plt.plot(indicators_array[:,0], indicators_array[:,4], marker='.', color='k', ls='--')
+        plt.plot(indicators_array[:,0], indicators_array[:,1] * 100.0, marker='.', color='k', ls='--', label=r'Min/Max')
+        plt.plot(indicators_array[:,0], indicators_array[:,2] * 100.0, marker='.', color=colors[0], label=r'Mean')
+        plt.plot(indicators_array[:,0], indicators_array[:,3] * 100.0, marker='x', color=colors[1], label=r'RMS')
+        plt.plot(indicators_array[:,0], indicators_array[:,4] * 100.0, marker='.', color='k', ls='--')
         plt.grid()
         plt.xlabel('Iteration number')
-        plt.ylabel(r'$\mu$($R_e$) [m]')
+        plt.ylabel(r'$\mu$($R_e$) [cm]')
         plt.legend()
         plt.title('Post fit residual mean - $R$ component')
 
         plt.figure()
-        plt.plot(indicators_array[:,0], indicators_array[:,5], marker='.', color='k', ls='--', label=r'Min/Max')
-        plt.plot(indicators_array[:,0], indicators_array[:,6], marker='.', color=colors[0], label=r'Mean')
-        plt.plot(indicators_array[:,0], indicators_array[:,7], marker='x', color=colors[1], label=r'RMS')
-        plt.plot(indicators_array[:,0], indicators_array[:,8], marker='.', color='k', ls='--')
+        plt.plot(indicators_array[:,0], indicators_array[:,5] * 100.0, marker='.', color='k', ls='--', label=r'Min/Max')
+        plt.plot(indicators_array[:,0], indicators_array[:,6] * 100.0, marker='.', color=colors[0], label=r'Mean')
+        plt.plot(indicators_array[:,0], indicators_array[:,7] * 100.0, marker='x', color=colors[1], label=r'RMS')
+        plt.plot(indicators_array[:,0], indicators_array[:,8] * 100.0, marker='.', color='k', ls='--')
         plt.grid()
         plt.xlabel('Iteration number')
-        plt.ylabel(r'$\mu$($S_e$) [m]')
+        plt.ylabel(r'$\mu$($S_e$) [cm]')
         plt.legend()
         plt.title('Post fit residual mean - $S$ component')
 
         plt.figure()
-        plt.plot(indicators_array[:,0], indicators_array[:,9], marker='.', color='k', ls='--', label=r'Min/Max')
-        plt.plot(indicators_array[:,0], indicators_array[:,10], marker='.', color=colors[0], label=r'Mean')
-        plt.plot(indicators_array[:,0], indicators_array[:,11], marker='x', color=colors[1], label=r'RMS')
-        plt.plot(indicators_array[:,0], indicators_array[:,12], marker='.', color='k', ls='--')
+        plt.plot(indicators_array[:,0], indicators_array[:,9] * 100.0, marker='.', color='k', ls='--', label=r'Min/Max')
+        plt.plot(indicators_array[:,0], indicators_array[:,10] * 100.0, marker='.', color=colors[0], label=r'Mean')
+        plt.plot(indicators_array[:,0], indicators_array[:,11] * 100.0, marker='x', color=colors[1], label=r'RMS')
+        plt.plot(indicators_array[:,0], indicators_array[:,12] * 100.0, marker='.', color='k', ls='--')
         plt.grid()
         plt.xlabel('Iteration number')
-        plt.ylabel(r'$\mu$($W_e$) [m]')
+        plt.ylabel(r'$\mu$($W_e$) [cm]')
         plt.legend()
         plt.title('Post fit residual mean - $W$ component')
 
@@ -446,14 +447,13 @@ if post_process_in_this_file:
     # plt.title('Parameter history')
 
     # PARAMETER HISTORY (AS DIFFERENCES WRT TRUTH)
-    true_parameters = settings.get_true_parameters()
     plot_legends = settings.get_plot_legends()
     plt.figure()
     for idx in range(len(true_parameters)):
         plt.semilogy(parameter_evolution_array[:,0], 100.0*abs(parameter_evolution_array[:,idx+1] / true_parameters[idx] - 1.0), label = plot_legends[idx], marker = '.')
     plt.grid()
     plt.xlabel('Iteration number')
-    plt.ylabel(r'$\Delta p$ [% of truth]')
+    plt.ylabel(r'$\Delta\vec y_i$ [% of truth]')
     plt.legend()
     plt.title('Parameter difference from truth')
 
@@ -470,7 +470,7 @@ if post_process_in_this_file:
         plt.semilogy(parameter_evolution_array[:,0], abs(initial_state_errors[:,idx]), label = current_legend_list[idx], marker = '.')
     plt.grid()
     plt.xlabel('Iteration number')
-    plt.ylabel(r'$\Delta p$ (% of $|\vec{r_o}|$ and $|\vec{v_o}|$)')
+    plt.ylabel(r'$|\Delta\vec x_{_i,o}|$ (% of $|\vec{r_o}|$ and $|\vec{v_o}|$)')
     plt.legend()
     plt.title('Initial state difference from truth in RSW')
 
@@ -497,7 +497,7 @@ if post_process_in_this_file:
     plt.title('Parameter change between pre- and post-fit')
 
     # CORRELATION MATRIX
-    plt.matshow(abs(estimation_output.correlations))
+    plt.matshow(abs(output.correlations))
     plt.title('Correlation matrix (absolute values)')
     plt.xticks(list(range(len(plot_legends))), plot_legends, fontsize = 15)
     plt.yticks(list(range(len(plot_legends))), plot_legends, fontsize = 15)

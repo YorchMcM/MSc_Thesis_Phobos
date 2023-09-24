@@ -5,68 +5,21 @@ Some scale for things:
     · Velocity of Phobos : 3 km/s
     · Reference radius: 13 km
 '''
-
+import os
 from copy import copy, deepcopy
 from Auxiliaries import *
 from tudatpy.kernel.astro.element_conversion import cartesian_to_spherical
 
-
-def fourier_transform(time_history: np.ndarray, clean_signal: list = [0.0, 0]) -> tuple:
-
-    """This function computes the fast fourier transform of a provided time history. It assumes that the quantity of the time history is real, and calls Numpy's rfft function to compute it. This function complements Numpy's rfft in the following ways:
-
-    · It accounts for a time history with an odd number of entries and removes the last entry to make it of even length.
-    · It allows to clean the signal. This encompasses two things:
-        - Some quantities present jumps because they are by definition bounded inside an interval, but their evolution is secular. This function removes this jumps and works with a continuous signal.
-        - Sometimes one is interested in the residuals of the signal when a predefined polynomial is removed from it. This function allows to remove this polynomial and return the fft of the residuals. The coefficients of the polynomial are computed using Numpy's polyfit.
-    · Numpy's rfft returns a complex arrays of coefficients, usually not useful. This function returns the amplitude domain, attending to the fact that (a) the norm of the coefficients is to be taken and (b) the actual amplitude of the sinusoid is twice the norm of the complex coefficient.
-    · Numpy's rfftfreq returns a frequency array that is in cycles / unit_of_time. This function returns the frequencies in rad / unit_of_time.
-
-    Parameters
-    ----------
-    time_history: np.ndarray
-        A two-dimensional array with two columns: the first column is the time, the second is the quantity whose frequency content is to be computed.
-    clean_signal: list[float]
-        This determines (a) whether the signal is to be removed of jumps and (b) whether a polynomial is to be removed from the signal. The first entry of clean_signal is the value of the jumps, and the second entry is the degree of the polynomial.
-
-    Returns
-    -------
-    tuple
-        There are two returns: the array of frequencies (in rad / unit_of_time) and the array of amplitudes.
-
-    """
-
-    if type(clean_signal[1]) != int:
-        raise TypeError('(fourier_transform): Invalid input. The second entry in clean_signal should be of type "int". A type ' + str(type(clean_signal[1])) + 'was provided.')
-    if clean_signal[1] < 0:
-        raise ValueError('(fourier_transform): Invalid input. The second entry in clean_signal cannot be negative. Current values is ' + str(clean_signal[1]) + '.')
-    if clean_signal[0] < 0.0:
-        raise ValueError('(fourier_transform): Invalid input. The first entry in clean_signal cannot be negative. Current values is ' + str(clean_signal[1]) + '.')
-
-    sample_times = time_history[:,0]
-    signal = time_history[:,1]
-
-    if len(sample_times) % 2.0 != 0.0:
-        sample_times = sample_times[:-1]
-        signal = signal[:-1]
-
-    if clean_signal[0] != 0.0:
-        signal = remove_jumps(signal, clean_signal[0])
-    if clean_signal[1] != 0:
-        coeffs = polyfit(sample_times, signal, clean_signal[1])
-        for idx, current_coeff in enumerate(coeffs):
-            exponent = idx
-            signal = signal - current_coeff*sample_times**exponent
-
-    n = len(sample_times)
-    dt = sample_times[1] - sample_times[0]
-    frequencies = 2.0*PI * rfftfreq(n, dt)
-    amplitudes = 2*abs(rfft(signal, norm = 'forward'))
-
-    return frequencies, amplitudes
-
 # save_dir = os.getcwd() + '/initial-guess-analysis/'
 color1, color2, color3, color4 = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E']
+colors = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E', '#77AC30', '#4DBEEE', '#A2142F', '#7f7f7f', '#bcbd22', '#17becf']
+# colors = ['#0072BD', '#D95319', 'k', '#7E2F8E', '#77AC30', '#4DBEEE', '#A2142F', '#7f7f7f', '#bcbd22', '#17becf']
+
+########################################################################################################################
+#                                                                                                                      #
+#                                                     LIBRATIONS I                                                     #
+#                                                                                                                      #
+########################################################################################################################
 
 # average_mean_motion = 0.00022785636553897436
 # bodies = get_solar_system('A2', 'ephemeris/translation-c.eph', 'ephemeris/rotation-c.eph')
@@ -344,40 +297,145 @@ color1, color2, color3, color4 = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E']
 # plt.ylabel(r'$\omega$ [º]')
 # plt.title('Argument of periapsis')
 
-
-# plot_kepler_elements(extract_elements_from_history(dependents, [6, 7, 8, 9, 10, 11]))
-
-
 # kepler = extract_elements_from_history(dependents, [6, 7, 8, 9, 10, 11])
-# read_dir = 'simulation-results/model-b/2023-07-13 12:35:19.273692/'
-# trajectory = read_vector_history_from_file(read_dir + 'states-d8192.dat')
-# trajectory = extract_elements_from_history(trajectory, [0, 1, 2, 3, 4, 5])
-# kepler = read_vector_history_from_file(read_dir + 'dependents-d8192.dat')
-# kepler = extract_elements_from_history(kepler, [6, 7, 8, 9, 10, 11])
-# epochs_list = list(trajectory.keys())
-# state_wrt_mars = np.zeros([len(epochs_list), 7])
-# n = np.zeros([len(epochs_list), 2])
-# inc_ecc = np.zeros([len(epochs_list), 3])
+# plot_kepler_elements(kepler)
+
+########################################################################################################################
+#                                                                                                                      #
+#                                         ORBIT AND ROTATION VERIFICATION                                              #
+#                                                                                                                      #
+########################################################################################################################
+
+# cwd = os.getcwd() + '/'
+# data_dir = cwd + 'simulation-results/model-b/2023-09-14 20:34:13.535931/'
+# dissipation_times = np.array([4.0, 8.0, 16.0, 32.0,  64.0,   128.0, 256.0,   512.0,  1024.0,  2048.0, 4096.0,   8192.0])
+# bodies = get_solar_system('B', cwd + 'ephemeris/translation-b.eph', cwd + 'ephemeris/rotation-b.eph')
+# inertia_tensor = bodies.get('Phobos').inertia_tensor
+# # R = MarsEquatorOfDate(bodies).j2000_to_mars_rotation
 #
-# for idx, epoch in enumerate(epochs_list):
+# undamped_dependents = dict2array(read_vector_history_from_file(data_dir + 'dependents-undamped.dat'))
+# damped_dependents = dict2array(read_vector_history_from_file(data_dir + 'dependents-d8192-full.dat'))
+#
+# mars_mu = bodies.get('Mars').gravitational_parameter
+# mean_motion_history = damped_dependents[:,[0,7]]
+# mean_motion_history[:,1] = np.sqrt(mars_mu / mean_motion_history[:,1] ** 3)
+# mean_motion, trash = average_over_integer_number_of_orbits(mean_motion_history, damped_dependents[:,[0,7,8,9,10,11,12]])
+# normal_mode = get_longitudinal_normal_mode_from_inertia_tensor(inertia_tensor, mean_motion)
+#
+# undamped_librations = undamped_dependents[:,[0,5,6]]
+# damped_librations = damped_dependents[:,[0,5,6]]
+#
+# undamped_fourier = fourier_transform(undamped_librations)
+# damped_fourier = fourier_transform(damped_librations)
+
+# plt.figure()
+# plt.loglog(undamped_fourier[:,0] * 86400.0, undamped_fourier[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\varphi$')
+# plt.loglog(undamped_fourier[:,0] * 86400.0, undamped_fourier[:,2] * 360.0 / TWOPI, marker = '.', label = r'$\lambda$')
+# plt.axvline(normal_mode * 86400.0, ls = 'dashed', c = 'k', label = r'$\nu$', linewidth = 2)
+# plt.axvline(mean_motion * 86400.0, ls='dashed', c='g', label = r'$n$', linewidth = 2)
+# plt.axvline(2.0 * mean_motion * 86400.0, ls='dashed', c='g', linewidth = 2)
+# plt.axvline(3.0 * mean_motion * 86400.0, ls='dashed', c='g', linewidth = 2)
+# plt.grid()
+# plt.legend()
+# plt.xlabel(r'$\omega$ [rad/day]')
+# plt.ylabel(r'Amplitude [º]')
+# plt.title('Undamped librational spectrum')
+#
+# plt.figure()
+# plt.loglog(damped_fourier[:,0] * 86400.0, damped_fourier[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\varphi$')
+# plt.loglog(damped_fourier[:,0] * 86400.0, damped_fourier[:,2] * 360.0 / TWOPI, marker = '.', label = r'$\lambda$')
+# plt.axvline(normal_mode * 86400.0, ls = 'dashed', c = 'k', label = r'$\nu$', linewidth = 2)
+# plt.axvline(mean_motion * 86400.0, ls='dashed', c='g', label = r'$n$', linewidth = 2)
+# plt.axvline(2.0 * mean_motion * 86400.0, ls='dashed', c='g', linewidth = 2)
+# plt.axvline(3.0 * mean_motion * 86400.0, ls='dashed', c='g', linewidth = 2)
+# plt.grid()
+# plt.legend()
+# plt.xlabel(r'$\omega$ [rad/day]')
+# plt.ylabel(r'Amplitude [º]')
+# plt.title('Damped librational spectrum')
+
+# spectrum = np.zeros([len(undamped_fourier), 2+len(dissipation_times)])
+# spectrum[:,:2] = undamped_fourier[:,[0,2]]
+# for idx, time in enumerate(dissipation_times):
+#     current_file = data_dir + 'dependents-d' + str(time).replace('.0', '') + '-full.dat'
+#     temp = dict2array(read_vector_history_from_file(current_file))[:,[0,6]]
+#     temp = fourier_transform(temp)
+#     spectrum[:,2+idx] = temp[:,1]
+#
+# spectrum = reduce_rows(spectrum, 10)
+# plt.figure()
+# plt.loglog(spectrum[:,0] * 86400.0, spectrum[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\tau = \infty$')
+# for idx in range(len(dissipation_times)):
+#     if idx % 2 == 0:
+#         plt.loglog(spectrum[:,0] * 86400.0, spectrum[:,2+idx] * 360.0 / TWOPI, marker = '.', label = r'$n = ' + str(idx+2) + '$')
+# plt.loglog(spectrum[:,0] * 86400.0, spectrum[:,-1] * 360.0 / TWOPI, marker = '.', label = r'$n = 13$')
+# plt.axvline(normal_mode * 86400.0, ls = 'dashed', c = 'k', label = r'$\nu$', linewidth = 2)
+# plt.grid()
+# plt.legend()
+# plt.xlabel(r'$\omega$ [rad/day]')
+# plt.ylabel(r'Amplitude [º]')
+# plt.title(r'Librational spectrum for $\tau = 2^n$ h.')
+#
+# undamped_librations = reduce_rows(undamped_librations, 14)
+# damped_librations = reduce_rows(damped_librations, 14)
+# plt.figure()
+# plt.scatter(undamped_librations[:,2] / TWOPI * 360.0, undamped_librations[:,1] / TWOPI * 360.0, label = 'Undamped')
+# plt.scatter(damped_librations[:,2] / TWOPI * 360.0, damped_librations[:,1] / TWOPI * 360.0, label = 'Damped')
+# plt.grid()
+# plt.legend()
+# plt.xlabel(r'$\lambda$ [º]')
+# plt.ylabel(r'$\varphi$ [º]')
+# plt.title('Mars\' coordinates in the Phobian sky')
+# plt.axis('equal')
+#
+# undamped_fourier = reduce_rows(undamped_fourier, 10)
+# damped_fourier = reduce_rows(damped_fourier, 10)
+#
+# plt.figure()
+# plt.loglog(undamped_fourier[:,0] * 86400.0, undamped_fourier[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\varphi$')
+# plt.loglog(undamped_fourier[:,0] * 86400.0, undamped_fourier[:,2] * 360.0 / TWOPI, marker = '.', label = r'$\lambda$')
+# plt.axvline(normal_mode * 86400.0, ls = 'dashed', c = 'k', label = r'$\nu$', linewidth = 2)
+# plt.axvline(mean_motion * 86400.0, ls='dashed', c='g', label = r'$n$', linewidth = 2)
+# plt.axvline(2.0 * mean_motion * 86400.0, ls='dashed', c='g', linewidth = 2)
+# plt.axvline(3.0 * mean_motion * 86400.0, ls='dashed', c='g', linewidth = 2)
+# plt.grid()
+# plt.legend()
+# plt.xlabel(r'$\omega$ [rad/day]')
+# plt.ylabel(r'Amplitude [º]')
+# plt.title('Undamped librational spectrum')
+#
+# plt.figure()
+# plt.loglog(damped_fourier[:,0] * 86400.0, damped_fourier[:,1] * 360.0 / TWOPI, marker = '.', label = r'$\varphi$')
+# plt.loglog(damped_fourier[:,0] * 86400.0, damped_fourier[:,2] * 360.0 / TWOPI, marker = '.', label = r'$\lambda$')
+# plt.axvline(normal_mode * 86400.0, ls = 'dashed', c = 'k', label = r'$\nu$', linewidth = 2)
+# plt.axvline(mean_motion * 86400.0, ls='dashed', c='g', label = r'$n$', linewidth = 2)
+# plt.axvline(2.0 * mean_motion * 86400.0, ls='dashed', c='g', linewidth = 2)
+# plt.axvline(3.0 * mean_motion * 86400.0, ls='dashed', c='g', linewidth = 2)
+# plt.grid()
+# plt.legend()
+# plt.xlabel(r'$\omega$ [rad/day]')
+# plt.ylabel(r'Amplitude [º]')
+# plt.title('Damped librational spectrum')
+
+# epochs = states[:,0]
+
+# plt.figure()
+# plt.scatter(mars_location[:,2] / TWOPI * 360.0, mars_location[:,1] / TWOPI * 360.0)
+# plt.grid()
+# plt.xlabel(r'$\lambda$ [º]')
+# plt.ylabel(r'$\varphi$ [º]')
+# plt.title('Mars\' coordinates in the Phobian sky')
+# plt.axis('equal')
+# plt.ylim([-0.2, 0.2])
+
+# state_wrt_mars = np.zeros([len(epochs), 7])
+# for idx, epoch in enumerate(epochs):
 #
 #     state_wrt_mars[idx,0] = epoch
-#     n[idx,0] = epoch
-# #     inc_ecc[idx,0] = current_epoch
-# #
-#     state_wrt_mars[idx,1:] = full_state_rotation @ trajectory[epoch]
-#     n[idx,1] = semi_major_axis_to_mean_motion(kepler[epoch][0], mu_mars)
-    #
-    # r = state_wrt_mars[idx,1:4]
-    # v = state_wrt_mars[idx,4:]
-#     h = np.cross(r,v)
 #
-#     inc = np.arccos(h[-1] / np.linalg.norm(h))
-#     ecc = np.linalg.norm(((np.cross(v,h))/42.82837e12) - (r / np.linalg.norm(r)))
+#     state_wrt_mars[idx,1:4] = R @ states[idx,1:4]
+#     state_wrt_mars[idx,4:] = R @ states[idx,4:]
 #
-#     inc_ecc[idx,1:] = np.array([inc, ecc])
-
-
 # theta = np.linspace(0.0, TWOPI, 1001)
 # circular_trajectory = np.zeros([len(theta), 3])
 # R = np.mean(np.linalg.norm(state_wrt_mars[:,1:4], axis = 1))
@@ -386,17 +444,19 @@ color1, color2, color3, color4 = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E']
 #     circular_trajectory[idx] = np.array([R*np.cos(angle), R*np.sin(angle), 0.0])
 #
 # R_mars = 3390e3
+#
+# scale = R_mars
 # figure, axis = plt.subplots()
-# axis.add_patch(plt.Circle((0, 0), R_mars / 1e3, color=color2))
-# axis.plot(state_wrt_mars[:,1] / 1e3, state_wrt_mars[:,2] / 1e3, label = 'Real orbit', c = color3)
-# axis.plot(circular_trajectory[:,0] / 1e3, circular_trajectory[:,1] / 1e3, label = 'Circular orbit', c = 'purple')
-# axis.set_xlabel(r'$x$ [km]')
-# axis.set_ylabel(r'$y$ [km]')
+# axis.add_patch(plt.Circle((0, 0), R_mars / scale, color=color2))
+# axis.plot(state_wrt_mars[:,1] / scale, state_wrt_mars[:,2] / scale, label = 'Real orbit', c = color3)
+# axis.plot(circular_trajectory[:,0] / scale, circular_trajectory[:,1] / scale, label = 'Circular orbit', c = 'purple')
+# axis.set_xlabel(r'$x$ [$R$]')
+# axis.set_ylabel(r'$y$ [$R$]')
 # plt.grid()
 # plt.legend()
 # axis.set_title('Orbit\'s top view')
 # plt.axis('equal')
-#
+
 # figure, axis = plt.subplots()
 # axis.add_patch(plt.Circle((0, 0), R_mars / 1e3, color=color2))
 # axis.plot(state_wrt_mars[:,1] / 1e3, state_wrt_mars[:,3] / 1e3, label = 'Real trajectory', c = color3)
@@ -407,18 +467,34 @@ color1, color2, color3, color4 = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E']
 # plt.legend()
 # axis.set_title('Side view of Phobos\' trajectory')
 # plt.axis('equal')
-#
+
 # figure, axis = plt.subplots()
-# axis.add_patch(plt.Circle((0, 0), R_mars / 1e3, color=color2))
-# axis.plot(state_wrt_mars[:,2] / 1e3, state_wrt_mars[:,3] / 1e3, label = 'Real orbit', c = color3)
-# axis.plot(circular_trajectory[:,1] / 1e3, circular_trajectory[:,2] / 1e3, label = 'Equatorial orbit', c = 'purple')
-# axis.set_xlabel(r'$y$ [km]')
-# axis.set_ylabel(r'$z$ [km]')
+# axis.add_patch(plt.Circle((0, 0), R_mars / scale, color=color2))
+# axis.plot(state_wrt_mars[:,2] / scale, state_wrt_mars[:,3] / scale, label = 'Real orbit', c = color3)
+# axis.plot(circular_trajectory[:,1] / scale, circular_trajectory[:,2] / scale, label = 'Equatorial orbit', c = 'purple')
+# axis.set_xlabel(r'$y$ [$R$]')
+# axis.set_ylabel(r'$z$ [$R$]')
 # plt.grid()
 # plt.legend()
 # axis.set_title('Orbit\'s side view')
 # plt.axis('equal')
+
+# plt.figure()
+# plt.plot(epochs / constants.JULIAN_YEAR, (kepler[:,1] - 0.0151) * 100.0, label = r'$\Delta e$ [$\times10^{-2}$]')
+# plt.plot(epochs / constants.JULIAN_YEAR, kepler[:,3] * 360.0 / TWOPI - 1.1, label = r'$\Delta i$ [º]')
+# plt.grid()
+# plt.legend(loc = 'upper right')
+# plt.xlabel('Time since J2000 [years]')
+# plt.ylabel('Element')
+# plt.title('Orbit\'s inclination and eccentricity')
 #
+# plt.figure()
+# plt.plot(epochs / constants.JULIAN_YEAR, (kepler[:,0] - 9376e3) / 1e3)
+# plt.grid()
+# plt.xlabel('Time since J2000 [years]')
+# plt.ylabel(r'$\Delta a$ [km]')
+# plt.title('Orbit\'s semi-major axis')
+
 # plot_kepler_elements(kepler, 'Model B')
 
 # plt.figure()
@@ -784,44 +860,56 @@ color1, color2, color3, color4 = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E']
 # plt.ylabel('LAT [º]')
 # plt.title('Tidal libration')
 
+########################################################################################################################
+#                                                                                                                      #
+#                                                     COUPLINGS                                                        #
+#                                                                                                                      #
+########################################################################################################################
+
 # uncoupled = read_vector_history_from_file('simulation-results/model-a1/2023-08-05 21:38:24.833011/state-history.dat')
-# coupled = read_vector_history_from_file('ephemeris/translation-b.eph')
-# uncoupled_new = read_vector_history_from_file('simulation-results/model-a1/2023-08-08 21:08:09.167299/state-history.dat')
-# coupled_new = read_vector_history_from_file('ephemeris/new/translation-b.eph')
+# uncoupled = read_vector_history_from_file('ephemeris/rkf1210/translation-a.eph')
+# coupled = read_vector_history_from_file('ephemeris/rkf1210/translation-b.eph')
+# # uncoupled_new = read_vector_history_from_file('simulation-results/model-a1/2023-08-08 21:08:09.167299/state-history.dat')
+# # coupled_new = read_vector_history_from_file('ephemeris/new/translation-b.eph')
 # diffs = dict2array(compare_results(uncoupled, coupled, list(coupled.keys())))
-# diffs_new = dict2array(compare_results(uncoupled_new, coupled_new, list(coupled_new.keys())))
+# # diffs_new = dict2array(compare_results(uncoupled_new, coupled_new, list(coupled_new.keys())))
 # normed_diffs = norm_rows(diffs[:,1:4])
-# normed_diffs_new = norm_rows(diffs_new[:,1:4])
+# # normed_diffs_new = norm_rows(diffs_new[:,1:4])
 # integration_errors = dict2array(read_vector_history_from_file('benchmark_errors/A1/2023-08-08 22:02:22.057801/rkdp-dt270/errors.dat'))
 # normed_integration_errors = norm_rows(integration_errors[:,1:4])
 #
-# deltas = dict2array(
-#     compare_results(array2dict(np.concatenate((np.atleast_2d(diffs[:,0]).T, np.atleast_2d(normed_diffs).T), 1)),
-#                     array2dict(np.concatenate((np.atleast_2d(diffs_new[:,0]).T, np.atleast_2d(normed_diffs_new).T), 1)),
-#                     diffs_new[:,0])
-# )
+# # deltas = dict2array(
+# #     compare_results(array2dict(np.concatenate((np.atleast_2d(diffs[:,0]).T, np.atleast_2d(normed_diffs).T), 1)),
+# #                     array2dict(np.concatenate((np.atleast_2d(diffs_new[:,0]).T, np.atleast_2d(normed_diffs_new).T), 1)),
+# #                     diffs_new[:,0])
+# # )
 #
 # factor = constants.JULIAN_YEAR
 # # factor = constants.JULIAN_DAY
 #
+# before_a_month = diffs[:,0] <= 30.0*constants.JULIAN_DAY
 # plt.figure()
-# # plt.semilogy(diffs[:,0] / factor, normed_diffs, label = r'RKF10(12), $\Delta t = 5$min')
-# plt.semilogy(diffs_new[:,0] / factor, normed_diffs_new, label = r'Coupling effects')
+# plt.semilogy(diffs[:,0] / factor, normed_diffs, label = r'Coupling effects')
+# # plt.semilogy(diffs_new[:,0] / factor, normed_diffs_new, label = r'Coupling effects')
 # # plt.semilogy(deltas[:,0] / factor, abs(deltas[:,1]), label = r'Difference between RKDP7(8) and RKF10(12)')
 # plt.semilogy(integration_errors[:,0] / factor, normed_integration_errors, label = r'Integration error')
-# plt.yticks([1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2], size = 15)
+# # plt.yticks([1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2])
 # if factor == constants.JULIAN_DAY:
 #     plt.xlim([-1.0, 30.0])
-#     plt.xticks(size=15)
+#     # plt.xticks(size=15)
 # else:
-#     plt.xticks([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], size = 15)
+#     plt.xticks([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
 # plt.xlabel('Time since J2000 [years]')
 # plt.ylabel(r'$\Delta r$ [m]')
 # plt.grid()
 # plt.legend()
-# plt.title('Position difference due to couplings compared to integration errors')
+# plt.title('Position difference due to couplings')
 
-#####################################################################################################################################################
+########################################################################################################################
+#                                                                                                                      #
+#                                              ESTIMATIONS COMPARISON                                                  #
+#                                                                                                                      #
+########################################################################################################################
 
 # r0 = 9484147.608363898
 # v0 = 2112.9812867643805
@@ -832,19 +920,19 @@ color1, color2, color3, color4 = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E']
 # norm_residuals = True
 # residuals_to_rsw = True
 # length_of_estimated_state_vector = 6
-# cols = int(20 + 4*(norm_residuals + 3*residuals_to_rsw) + length_of_estimated_state_vector + 1)
-# data_matrix_base = read_matrix_from_file('estimation-results/batch 2023-08-12 10:25:25.573262/batch_analysis_matrix.dat', [9, cols])
-# data_matrix_libration = read_matrix_from_file('estimation-results/bravo/batch 2023-08-12 10:55:22.243514/batch_analysis_matrix.dat', [9, cols+1])
-# data_matrix_harmonics = read_matrix_from_file('estimation-results/alpha/batch 2023-08-12 11:44:38.653334/batch_analysis_matrix.dat', [8, cols + 2])
+# cols = int(20 + 4*(norm_residuals + 3*residuals_to_rsw) + length_of_estimated_state_vector)
+# data_matrix_base = read_matrix_from_file('estimation-results/base-1/batch 2023-09-15 11:48:08.314339/batch_analysis_matrix.dat', [9, cols])
+# data_matrix_libration = read_matrix_from_file('estimation-results/bravo/batch 2023-09-16 08:14:54.184457/batch_analysis_matrix.dat', [9, cols+1])
+# # data_matrix_harmonics = read_matrix_from_file('estimation-results/alpha/batch 2023-08-12 11:44:38.653334/batch_analysis_matrix.dat', [8, cols + 2])
 #
 # extra_norm_res = 4
 # extra_rsw_res = 12
 # extra_rot = 0
 #
-# idx1 = 21 + extra_norm_res + extra_rsw_res
-# idx2 = 27 + extra_norm_res + extra_rsw_res
+# idx1 = 20 + extra_norm_res + extra_rsw_res
+# idx2 = 26 + extra_norm_res + extra_rsw_res
 # libration_to_base = data_matrix_libration[:,idx1:idx2] / data_matrix_base[:,idx1:idx2]
-# harmonics_to_base = data_matrix_harmonics[:,idx1:idx2] / data_matrix_base[:-1,idx1:idx2]
+# # harmonics_to_base = data_matrix_harmonics[:,idx1:idx2] / data_matrix_base[:-1,idx1:idx2]
 #
 # ms = 15
 # xlabel = 'Duration of estimated arc [days]'
@@ -882,14 +970,14 @@ color1, color2, color3, color4 = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E']
 # plt.plot(data_matrix_base[:,0] / 86400.0, abs(libration_to_base[:,3]), marker='x', ls='dashed', label=r'$\Delta v_{r,o}$')
 # plt.plot(data_matrix_base[:,0] / 86400.0, abs(libration_to_base[:,4]), marker='x', ls='dashed', label=r'$\Delta v_{s,o}$')
 # plt.plot(data_matrix_base[:,0] / 86400.0, abs(libration_to_base[:,5]), marker='x', ls='dashed', label=r'$\Delta v_{w,o}$')
-# plt.plot(data_matrix_base[:,0] / 86400.0, 100*abs(data_matrix_libration[:,-1] / true_libration_amplitude), marker = '+', markersize=ms, label=r'$\Delta A$ [% of truth]')
+# # plt.plot(data_matrix_base[:,0] / 86400.0, 100*abs(data_matrix_libration[:,-1] / true_libration_amplitude), marker = '+', markersize=ms, label=r'$\Delta B$ [% of truth]')
 # plt.yscale('log')
 # plt.grid()
 # plt.legend()
 # plt.xlabel(xlabel)
 # plt.ylabel(r'$\Delta\vec x_{o,bv} / \Delta\vec x_{o,bs}$')
-# plt.title('Ratio of ERE between bravo and base estimations')
-#
+# plt.title('ERE improvement between bravo and base')
+
 # plt.figure()
 # plt.plot(data_matrix_harmonics[:,0] / 86400.0, abs(harmonics_to_base[:,0]), marker='.', markersize=ms, label=r'$\Delta R_o$')
 # plt.plot(data_matrix_harmonics[:,0] / 86400.0, abs(harmonics_to_base[:,1]), marker='.', markersize=ms, label=r'$\Delta S_o$')
@@ -905,7 +993,7 @@ color1, color2, color3, color4 = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E']
 # plt.xlabel(xlabel)
 # plt.ylabel(r'$\Delta\vec x_{o,\alpha} / \Delta\vec x_{o,bs}$')
 # plt.title('Ratio of ERE between alpha and base estimations')
-#
+
 # plt.figure()
 # plt.plot(data_matrix_base[:,0] / 86400.0, data_matrix_libration[:,21] / data_matrix_base[:,21], marker='.', label=r'$R$')
 # plt.plot(data_matrix_base[:,0] / 86400.0, data_matrix_libration[:,25] / data_matrix_base[:,25], marker='.', label=r'$S$')
@@ -916,8 +1004,8 @@ color1, color2, color3, color4 = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E']
 # plt.legend()
 # plt.xlabel(xlabel)
 # plt.ylabel(r'RMS($\varepsilon_{bv}$) / RMS($\varepsilon_{bs}$)')
-# plt.title('Ratio of post-fit residual RMS between bravo and base estimations')
-#
+# plt.title('Residual improvement between bravo and base')
+
 # plt.figure()
 # plt.plot(data_matrix_harmonics[:,0] / 86400.0, data_matrix_harmonics[:,21] / data_matrix_base[:-1,21], marker='.', label=r'$R$')
 # plt.plot(data_matrix_harmonics[:,0] / 86400.0, data_matrix_harmonics[:,25] / data_matrix_base[:-1,25], marker='.', label=r'$S$')
@@ -929,6 +1017,12 @@ color1, color2, color3, color4 = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E']
 # plt.xlabel(xlabel)
 # plt.ylabel(r'RMS($\varepsilon_{\alpha}$) / RMS($\varepsilon_{bs}$)')
 # plt.title('Ratio of post-fit residual RMS between alpha and base estimations')
+
+########################################################################################################################
+#                                                                                                                      #
+#                                                ORBIT'S FREQUENCIES                                                   #
+#                                                                                                                      #
+########################################################################################################################
 
 # average_mean_motion = 0.0002278563609852602
 # eccentricity = 0.015034167790105173
@@ -984,6 +1078,12 @@ color1, color2, color3, color4 = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E']
 # diffs = array2dict(diffs)
 #
 # plot_kepler_elements(diffs, 'Differences in keplerian elements between coupled and uncoupled models')
+
+########################################################################################################################
+#                                                                                                                      #
+#                                                   LIBRATIONS I                                                       #
+#                                                                                                                      #
+########################################################################################################################
 
 # physical_libration = dependents_coupled[:,[0,3]]
 # tidal_libration = dependents_coupled[:,[0,6]]
@@ -1053,66 +1153,449 @@ color1, color2, color3, color4 = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E']
 # plt.ylabel(r'$\alpha$ [º]')
 # plt.title('Librations')
 
-save_dir = os.getcwd() + '/checking-partials/august-crisis/'
-os.makedirs(save_dir, exist_ok = True)
+########################################################################################################################
+#                                                                                                                      #
+#                                                   LIBRATIONS II                                                      #
+#                                                                                                                      #
+########################################################################################################################
 
-increments = [-0.001, 0.00, 0.001]
-initial_state = read_vector_history_from_file('ephemeris/translation-b.eph')[0.0]
-simulation_time = 30.0 * constants.JULIAN_DAY
+# bodies = get_solar_system('A1')
 
-for idx, current_increment in enumerate(increments):
+# dependents_dict = read_vector_history_from_file('/home/yorch/thesis/ephemeris/associated-dependents/b.dat')
+# dependents = dict2array(dependents_dict)
+# euler_angles = dependents[:,[0,1,2,3]]
+# keplerian_history = dependents[:,[0,7,8,9,10,11,12]]
+# tidal_libration = dependents[:,[0,6]]
+# tidal_libration[:,1] = -tidal_libration[:,1]
+# mean_anomaly = keplerian_history[:,[0,6]]
+# mean_anomaly[:,1] = np.array([true_to_mean_anomaly(keplerian_history[idx,2], keplerian_history[idx,-1]) for idx in range(len(keplerian_history))])
+# eccentricity = compute_eccentricity_from_dependent_variables(dependents_dict)
+# optical_libration = dependents[:,[0,1]]
+# optical_libration[:,1] = 2*eccentricity*np.sin(mean_anomaly[:,1])
+#
+# offset = 40
+# plt.figure()
+# plt.plot(tidal_libration[offset:offset+100,0] / 3600.0, tidal_libration[offset:offset+100,1] * 360.0 / TWOPI, marker = '.', label = r'$\psi$')
+# plt.plot(tidal_libration[offset:offset+100,0] / 3600.0, 2*eccentricity*np.sin(mean_anomaly[offset:offset+100,1]) * 360.0 / TWOPI, marker = '.', label = r'$2e$sin$M$')
+# plt.plot(tidal_libration[offset:offset+100,0] / 3600.0, (tidal_libration[offset:offset+100,1] + optical_libration[offset:offset+100,1]) * 360.0 / TWOPI, marker = '.', label = r'$\gamma$')
+# plt.grid()
+# plt.legend(loc = 'lower right')
+# plt.xlabel('Time since J2000 [hours]')
+# plt.ylabel('Angle [º]')
+# plt.title('Librations')
 
-    current_libration_amplitude = (1.00 + current_increment) * 2.6952203863816266
-    bodies = get_solar_system('A1', libration_amplitude=current_libration_amplitude)
-    propagator_settings = get_propagator_settings('A1', bodies, 0.0, initial_state, simulation_time)
+########################################################################################################################
+#                                                                                                                      #
+#                                            ANALYTICAL/NUMERICAL DEVIATIONS                                           #
+#                                                                                                                      #
+########################################################################################################################
 
-    if current_increment == 0.0:
-        parameter_settings = (estimation_setup.parameter.initial_states(propagator_settings, bodies, [0.0]) +
-                              [estimation_setup.parameter.scaled_longitude_libration_amplitude('Phobos')])
-        parameters_to_estimate = estimation_setup.create_parameter_set(parameter_settings, bodies)
-        simulator = numerical_simulation.create_variational_equations_solver(bodies,
-                                                                             propagator_settings,
-                                                                             parameters_to_estimate)
-        write_matrix_history_to_file(simulator.sensitivity_matrix_history, save_dir + 'sensitivity-matrix-history.dat')
+# increments = [-0.001, 0.00, 0.001]
+# initial_state = read_vector_history_from_file('ephemeris/translation-b.eph')[0.0]
+# simulation_time = 30.0 * constants.JULIAN_DAY
+#
+# for idx, current_increment in enumerate(increments):
+#
+#     current_libration_amplitude = (1.00 + current_increment) * 2.6952203863816266
+#     bodies = get_solar_system('A1', libration_amplitude=current_libration_amplitude)
+#     propagator_settings = get_propagator_settings('A1', bodies, 0.0, initial_state, simulation_time)
+#
+#     if current_increment == 0.0:
+#         parameter_settings = (estimation_setup.parameter.initial_states(propagator_settings, bodies, [0.0]) +
+#                               [estimation_setup.parameter.scaled_longitude_libration_amplitude('Phobos')])
+#         parameters_to_estimate = estimation_setup.create_parameter_set(parameter_settings, bodies)
+#         simulator = numerical_simulation.create_variational_equations_solver(bodies,
+#                                                                              propagator_settings,
+#                                                                              parameters_to_estimate)
+#         write_matrix_history_to_file(simulator.sensitivity_matrix_history, save_dir + 'sensitivity-matrix-history.dat')
+#
+#         for increment in [x for x in increments if x != 0.00]:
+#             analytical_delta = dict.fromkeys(list(simulator.state_history.keys()))
+#             for epoch in list(analytical_delta.keys()):
+#                 analytical_delta[epoch] = (simulator.sensitivity_matrix_history[epoch] @ np.array([[increment]])).reshape(6)
+#
+#             save2txt(analytical_delta, save_dir + 'analytical-delta' + str(int(np.sign(increment))) + '.dat')
+#     else:
+#         simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
+#
+#     save2txt(simulator.state_history, save_dir + 'state-history-libration-index-' + str(idx) + '.dat')
+#
+# analytical_delta_plus = read_vector_history_from_file(save_dir + 'analytical-delta1.dat')
+# analytical_delta_minus = read_vector_history_from_file(save_dir + 'analytical-delta-1.dat')
+# states_nominal = read_vector_history_from_file(save_dir + 'state-history-libration-index-1.dat')
+# states_plus = read_vector_history_from_file(save_dir + 'state-history-libration-index-2.dat')
+# states_minus = read_vector_history_from_file(save_dir + 'state-history-libration-index-0.dat')
+# epochs = list(states_nominal.keys())
+#
+# numerical_delta_plus = compare_results(states_nominal, states_plus, epochs)
+# numerical_delta_minus = compare_results(states_nominal, states_minus, epochs)
+#
+# dr_plus = np.zeros([len(epochs), 2])
+# dr_minus = np.zeros([len(epochs), 2])
+# dr_plus[:,0] = epochs
+# dr_minus[:,0] = epochs
+# dr_plus[:,1] = norm_rows(dict2array(compare_results(analytical_delta_plus, numerical_delta_plus, epochs))[:,1:4])
+# dr_minus[:,1] = norm_rows(dict2array(compare_results(analytical_delta_minus, numerical_delta_minus, epochs))[:,1:4])
+#
+# epochs = np.array(epochs)
+# plt.figure()
+# plt.plot(epochs / 86400.0, dr_plus[:,1], marker = '.', label = r'$\Delta r_{+}$')
+# # plt.plot(epochs / 86400.0, dr_minus[:,1], marker = '.', label = r'$\Delta r_{-}$')
+# # plt.yscale('log')
+# plt.grid()
+# # plt.legend()
+# plt.xlabel('Time since J2000 [days]')
+# plt.ylabel(r'$\Delta r$ [m]')
+# plt.title('Difference between analytical and numerical deviations')
 
-        for increment in [x for x in increments if x != 0.00]:
-            analytical_delta = dict.fromkeys(list(simulator.state_history.keys()))
-            for epoch in list(analytical_delta.keys()):
-                analytical_delta[epoch] = (simulator.sensitivity_matrix_history[epoch] @ np.array([[increment]])).reshape(6)
+########################################################################################################################
+#                                                                                                                      #
+#                                            COUPLING EFFECTS ON STATE HISTORY                                         #
+#                                                                                                                      #
+########################################################################################################################
 
-            save2txt(analytical_delta, save_dir + 'analytical-delta' + str(int(np.sign(increment))) + '.dat')
-    else:
-        simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
-
-    save2txt(simulator.state_history, save_dir + 'state-history-libration-index-' + str(idx) + '.dat')
-
-analytical_delta_plus = read_vector_history_from_file(save_dir + 'analytical-delta1.dat')
-analytical_delta_minus = read_vector_history_from_file(save_dir + 'analytical-delta-1.dat')
-states_nominal = read_vector_history_from_file(save_dir + 'state-history-libration-index-1.dat')
-states_plus = read_vector_history_from_file(save_dir + 'state-history-libration-index-2.dat')
-states_minus = read_vector_history_from_file(save_dir + 'state-history-libration-index-0.dat')
-epochs = list(states_nominal.keys())
-
-numerical_delta_plus = compare_results(states_nominal, states_plus, epochs)
-numerical_delta_minus = compare_results(states_nominal, states_minus, epochs)
-
-dr_plus = np.zeros([len(epochs), 2])
-dr_minus = np.zeros([len(epochs), 2])
-dr_plus[:,0] = epochs
-dr_minus[:,0] = epochs
-dr_plus[:,1] = norm_rows(dict2array(compare_results(analytical_delta_plus, numerical_delta_plus, epochs))[:,1:4])
-dr_minus[:,1] = norm_rows(dict2array(compare_results(analytical_delta_minus, numerical_delta_minus, epochs))[:,1:4])
-
-epochs = np.array(epochs)
-plt.figure()
-plt.plot(epochs / 86400.0, dr_plus[:,1], marker = '.', label = r'$\Delta r_{+}$')
-# plt.plot(epochs / 86400.0, dr_minus[:,1], marker = '.', label = r'$\Delta r_{-}$')
-# plt.yscale('log')
-plt.grid()
+# uncoupled_states = dict2array(read_vector_history_from_file('ephemeris/translation-a.eph'))
+# coupled_states = dict2array(read_vector_history_from_file('ephemeris/translation-b.eph'))
+# diffs = coupled_states[:,1:4] - uncoupled_states[:,1:4]
+#
+# uncoupled_dependents = dict2array(read_vector_history_from_file('ephemeris/associated-dependents/a1.dat'))
+# coupled_dependents = dict2array(read_vector_history_from_file('ephemeris/associated-dependents/b.dat'))
+# kepler_diffs = coupled_dependents[:,[0,7,8,9,10,11,12]] - uncoupled_dependents[:,[0,7,8,9,10,11,12]]
+# kepler_diffs[:,0] = coupled_dependents[:,0]
+# kepler_diffs[:,[3,4,5,6]] = bring_inside_bounds(kepler_diffs[:,[3,4,5,6]], -PI, PI, include = 'upper')
+#
+# plot_kepler_elements(kepler_diffs, title = 'Differences')
+#
+# plt.figure()
+# plt.plot(kepler_diffs[:,0] / constants.JULIAN_YEAR, kepler_diffs[:,5] * 360.0 / TWOPI * 1000.0, label = r'$\Delta\omega$')
+# plt.plot(kepler_diffs[:,0] / constants.JULIAN_YEAR, kepler_diffs[:,6] * 360.0 / TWOPI * 1000.0, label = r'$\Delta\theta$')
+# plt.grid()
 # plt.legend()
-plt.xlabel('Time since J2000 [days]')
-plt.ylabel(r'$\Delta r$ [m]')
-plt.title('Difference between analytical and numerical deviations')
+# plt.xlabel('Time since J2000 [years]')
+# plt.ylabel(r'[$\times 10^{-3}$ º]')
+# plt.title('Effect of coupling')
+#
+# plt.figure()
+# plt.plot(kepler_diffs[:,0] / constants.JULIAN_YEAR, kepler_diffs[:,1] / 1000.0, label = r'$\Delta a$ [km]')
+# plt.plot(kepler_diffs[:,0] / constants.JULIAN_YEAR, kepler_diffs[:,4] * 360.0 / TWOPI, label = r'$\Delta i$ [º]')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since J2000 [years]')
+# plt.title('Effect of coupling')
+#
+# plt.figure()
+# plt.plot(kepler_diffs[:,0] / constants.JULIAN_YEAR, kepler_diffs[:,2])
+# plt.grid()
+# plt.xlabel('Time since J2000 [years]')
+# plt.ylabel(r'$\Delta e$ [-]')
+# plt.title('Effect of coupling')
+#
+# plt.figure()
+# plt.plot(kepler_diffs[:,0] / constants.JULIAN_YEAR, kepler_diffs[:,3] / TWOPI * 360.0 * 1000.0)
+# plt.grid()
+# plt.xlabel('Time since J2000 [years]')
+# plt.ylabel(r'$\Delta\Omega$ [$\times 10^{-3}\ º$]')
+# plt.title('Effect of coupling')
+#
+# for idx in range(len(uncoupled_states)):
+#     diffs[idx] = inertial_to_rsw_rotation_matrix(uncoupled_states[idx,1:]) @ diffs[idx]
+#
+# first_week = uncoupled_states[:,0] <= 7.0*constants.JULIAN_DAY
+# first_month = uncoupled_states[:,0] <= 30.0*constants.JULIAN_DAY
+#
+# plt.figure()
+# plt.plot(coupled_states[:,0] / 86400.0 / 365.25, norm_rows(diffs), marker = '.')
+# plt.yticks([1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2])
+# plt.grid()
+# plt.yscale('log')
+# plt.xlabel('Time since J2000 [years]')
+# plt.ylabel(r'$|\Delta\vec r|$ [m]')
+# plt.title('Position difference due to couplings')
+#
+# plt.figure()
+# plt.plot(coupled_states[first_month,0] / 86400.0, norm_rows(diffs[first_month,:]), marker = '.')
+# plt.yticks([1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2])
+# plt.grid()
+# plt.yscale('log')
+# plt.xlabel('Time since J2000 [days]')
+# plt.ylabel(r'$|\Delta\vec r|$ [m]')
+# plt.title('Position difference due to couplings')
+#
+# plt.figure()
+# plt.plot(coupled_states[:,0] / 86400.0 / 365.25, abs(diffs[:,0]), label = 'R')
+# plt.plot(coupled_states[:,0] / 86400.0 / 365.25, abs(diffs[:,1]), label = 'S')
+# plt.plot(coupled_states[:,0] / 86400.0 / 365.25, abs(diffs[:,2]), label = 'W')
+# plt.yticks([1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2])
+# plt.grid()
+# plt.legend()
+# plt.yscale('log')
+# plt.xlabel('Time since J2000 [years]')
+# plt.ylabel(r'$|\Delta\vec r_i|$ [m]')
+# plt.title('Position difference due to couplings')
+
+# plt.figure()
+# plt.scatter(-diffs[:,0], -diffs[:,1], c = uncoupled_states[:,0] / constants.JULIAN_YEAR)
+# plt.grid()
+# cb = plt.colorbar(label='Time [days]')
+# cb.set_ticks(ticks=[0, 2, 4, 6, 8, 10], labels=[0, 2, 4, 6, 8, 10], fontsize=15)
+# plt.xlabel(r'$R$ [m]')
+# plt.ylabel(r'$S$ [m]')
+# plt.title('Uncoupled orbit around coupled orbit')
+#
+# plt.figure()
+# plt.scatter(-diffs[:,0], -diffs[:,2], c = uncoupled_states[:,0] / constants.JULIAN_YEAR)
+# plt.grid()
+# cb = plt.colorbar(label='Time [days]')
+# cb.set_ticks(ticks=[0, 2, 4, 6, 8, 10], labels=[0, 2, 4, 6, 8, 10], fontsize=15)
+# plt.xlabel(r'$R$ [m]')
+# plt.ylabel(r'$W$ [m]')
+# plt.title('Uncoupled orbit around coupled orbit')
+
+# plt.figure()
+# plt.scatter(-diffs[first_week,0], -diffs[first_week,1], c = uncoupled_states[first_week,0] / 86400.0)
+# plt.grid()
+# cb = plt.colorbar(label='Time [days]')
+# cb.set_ticks(ticks=[0, 1, 2, 3, 4, 5, 6, 7], labels=[0, 1, 2, 3, 4, 5, 6, 7], fontsize=15)
+# plt.xlabel(r'$R$ [m]')
+# plt.ylabel(r'$S$ [m]')
+# plt.title('Uncoupled orbit around coupled orbit')
+#
+# plt.figure()
+# plt.scatter(-diffs[first_week,0], -diffs[first_week,2], c = uncoupled_states[first_week,0] / 86400.0)
+# plt.grid()
+# cb = plt.colorbar(label='Time [days]')
+# cb.set_ticks(ticks=[0, 1, 2, 3, 4, 5, 6, 7], labels=[0, 1, 2, 3, 4, 5, 6, 7], fontsize=15)
+# plt.xlabel(r'$R$ [m]')
+# plt.ylabel(r'$W$ [m]')
+# plt.title('Uncoupled orbit around coupled orbit')
+
+########################################################################################################################
+#                                                                                                                      #
+#                                            ORBIT DETERMINATION VERIFICATION                                          #
+#                                                                                                                      #
+########################################################################################################################
+
+# Analysis on steps for numerical derivatives
+
+# settings = EstimationSettings(os.getcwd() + '/estimation-settings.inp')
+# translational_ephemeris_file, rotational_ephemeris_file = retrieve_ephemeris_files('A1')
+# bodies = get_solar_system('A1', translational_ephemeris_file, rotational_ephemeris_file)
+#
+# initial_epoch = 1.0*constants.JULIAN_YEAR
+# simulation_time = 30.0*constants.JULIAN_DAY
+# initial_state = read_vector_history_from_file(os.getcwd() + '/ephemeris/translation-a.eph')[initial_epoch]
+#
+# propagator_settings = get_propagator_settings('A1', bodies, initial_epoch, initial_state, simulation_time, time_step = 150.0)
+# precise_states = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings).state_history
+#
+# propagator_settings = get_propagator_settings('A1', bodies, initial_epoch, initial_state, simulation_time)
+# reference_states = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings).state_history
+# epochs = np.array(list(reference_states.keys()))
+# epochs = (epochs - epochs[0]) / 86400.0
+#
+# numerical_errors = dict2array(compare_results(precise_states, reference_states, list(reference_states.keys())))[:,[1,2,3]]
+#
+#
+# # DERIVATIVES WRT INITIAL STATE VECTOR
+# small_steps = np.array([1.0, 1.0, 1.0, 1.0e-6, 1.0e-6, 1.0e-6])
+# big_steps = 10.0*small_steps
+# derivatives_small = compute_numerical_partials_wrt_initial_state_vector(bodies, propagator_settings)
+# derivatives_big = compute_numerical_partials_wrt_initial_state_vector(bodies, propagator_settings, big_steps)
+# diffs = [None]*6
+# physical_differences = [None]*6
+# for idx in range(len(derivatives_small)):
+#     diffs[idx] = dict2array(compare_results(derivatives_small[idx], derivatives_big[idx], list(derivatives_big[idx].keys())))[:,[1,2,3]]
+#     derivatives_big[idx] = dict2array(derivatives_big[idx])[:,[1,2,3]]
+#     derivatives_small[idx] = dict2array(derivatives_small[idx])[:,[1,2,3]]
+#     physical_differences[idx] = derivatives_small[idx] * small_steps[idx]
+#
+# legends = [r'x_o', r'y_o', r'z_o', r'v_{x,o}', r'v_{y,o}', r'v_{z,o}']
+# plt.figure()
+# for idx in range(6):
+#     if idx < 3:
+#         unit = r'[-]'
+#     else:
+#         unit = r'[s]'
+#     if idx == 1:
+#         plt.plot(epochs, norm_rows(derivatives_big[idx]), c = colors[idx], label = r'$\partial\vec r / \partial ' + legends[idx] + r'$ ' + unit, linewidth = 5)
+#         plt.plot(epochs, norm_rows(diffs[idx]), c = colors[idx], ls = 'dashed', linewidth = 5)
+#     else:
+#         plt.plot(epochs, norm_rows(derivatives_big[idx]), c = colors[idx], label = r'$\partial\vec r / \partial ' + legends[idx] + r'$ ' + unit)
+#         plt.plot(epochs, norm_rows(diffs[idx]), c = colors[idx], ls = 'dashed')
+# plt.yscale('log')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since estimation start [days]')
+# plt.ylabel(r'$|\vec f|$ or $|\Delta\vec f|$')
+# plt.title(r'Central differences: values and errors')
+#
+# plt.figure()
+# for idx in range(6):
+#     if idx == 1:
+#         plt.plot(epochs, norm_rows(physical_differences[idx]), c = colors[idx], linewidth = 5, label = r'$\Delta ' + legends[idx] + r'$')
+#     else:
+#         plt.plot(epochs, norm_rows(physical_differences[idx]), c=colors[idx], label=r'$\Delta ' + legends[idx] + r'$')
+# plt.plot(epochs, norm_rows(numerical_errors),  c = 'r', label = 'Integration error')
+# plt.yscale('log')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since estimation start [days]')
+# plt.ylabel(r'$|\Delta\vec r|$ [m]')
+# plt.title(r'Effect of each $h_2$ for each component of $\vec x_o$')
+#
+# # DERIVATIVES WRT LIBRATION AMPLITUDE AND HARMONIC COEFFICIENTS
+# derivatives_small = (compute_numerical_partials_wrt_scaled_libration_amplitude(bodies, initial_epoch, initial_state, simulation_time) +
+#                      compute_numerical_partials_wrt_harmonic_coefficients(bodies, initial_epoch, initial_state, simulation_time))
+# derivatives_big = (compute_numerical_partials_wrt_scaled_libration_amplitude(bodies, initial_epoch, initial_state, simulation_time, step = 0.01) +
+#                    compute_numerical_partials_wrt_harmonic_coefficients(bodies, initial_epoch, initial_state, simulation_time, step_vector = np.array([0.01, 0.01])))
+# diffs = [None]*3
+# physical_differences = [None]*3
+# for idx in range(len(derivatives_small)):
+#     diffs[idx] = dict2array(compare_results(derivatives_small[idx], derivatives_big[idx], list(derivatives_big[idx].keys())))[:,[1,2,3]]
+#     derivatives_big[idx] = dict2array(derivatives_big[idx])[:,[1,2,3]]
+#     derivatives_small[idx] = dict2array(derivatives_small[idx])[:,[1,2,3]]
+#     physical_differences[idx] = derivatives_small[idx] * small_steps[idx]
+#
+# legends = [r'B', r'C_{2,0}', r'C_{2,2}']
+# plt.figure()
+# for idx in range(3):
+#     if idx < 3:
+#         unit = r'[-]'
+#     else:
+#         unit = r'[s]'
+#     if idx == 1:
+#         plt.plot(epochs, norm_rows(derivatives_big[idx]), c = colors[idx], label = r'$\partial\vec r / \partial ' + legends[idx] + r'$ ' + unit, linewidth = 5)
+#         plt.plot(epochs, norm_rows(diffs[idx]), c = colors[idx], ls = 'dashed', linewidth = 5)
+#     else:
+#         plt.plot(epochs, norm_rows(derivatives_big[idx]), c = colors[idx], label = r'$\partial\vec r / \partial ' + legends[idx] + r'$ ' + unit)
+#         plt.plot(epochs, norm_rows(diffs[idx]), c = colors[idx], ls = 'dashed')
+# plt.yscale('log')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since estimation start [days]')
+# plt.ylabel(r'$|\vec f|$ or $|\Delta\vec f|$')
+# plt.title(r'Central differences: values and errors')
+#
+# plt.figure()
+# for idx in range(3):
+#     if idx == 1:
+#         plt.plot(epochs, norm_rows(physical_differences[idx]), c = colors[idx], linewidth = 5, label = r'$\Delta ' + legends[idx] + r'$')
+#     else:
+#         plt.plot(epochs, norm_rows(physical_differences[idx]), c=colors[idx], label=r'$\Delta ' + legends[idx] + r'$')
+# plt.plot(epochs, norm_rows(numerical_errors),  c = 'r', label = 'Integration error')
+# plt.yscale('log')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since estimation start [days]')
+# plt.ylabel(r'$|\Delta\vec r|$ [m]')
+# plt.title(r'Effect of $h_2$ for each parameter')
+
+########################################################################################################################
+#                                                                                                                      #
+#                                               OBSERVATION SIMULATORS                                                 #
+#                                                                                                                      #
+########################################################################################################################
+
+# cwd = os.getcwd() + '/'
+
+# base = os.getcwd() + '/estimation-results/verification/changed-observation-simulation/'
+# mothered = read_vector_history_from_file(base + '2023-09-12 20:45:08.494528/observation-history.dat')
+# rogue = read_vector_history_from_file(base + '2023-09-12 20:48:53.453504/observation-history.dat')
+# observation_times = np.array(list(rogue.keys()))
+# observation_times = ( observation_times - observation_times[0] + 3600.0 ) / 86400.0
+#
+# rogue_array = dict2array(rogue)[:,[1,2,3]]
+# mothered_array = dict2array(mothered)[:,[1,2,3]]
+# diffs = rogue_array - mothered_array
+# plt.figure()
+# plt.scatter(observation_times, abs(rogue_array[:,0]), label = 'Rogue simulators')
+# plt.scatter(observation_times, abs(mothered_array[:,0]), label = 'Mothered simulators')
+# plt.scatter(observation_times, abs(diffs[:,0]), label = 'Difference')
+# plt.grid()
+# plt.yscale('log')
+# plt.legend()
+# plt.xlabel('Time since J2000 [seconds]')
+# plt.ylabel('Observation [m]')
+# plt.title('Observations - X')
+# plt.figure()
+# plt.scatter(observation_times, abs(rogue_array[:,1]), label = 'Rogue simulators')
+# plt.scatter(observation_times, abs(mothered_array[:,1]), label = 'Mothered simulators')
+# plt.scatter(observation_times, abs(diffs[:,1]), label = 'Difference')
+# plt.grid()
+# plt.yscale('log')
+# plt.legend()
+# plt.xlabel('Time since J2000 [seconds]')
+# plt.ylabel('Observation [m]')
+# plt.title('Observations - Y')
+# plt.figure()
+# plt.scatter(observation_times, abs(rogue_array[:,2]), label = 'Rogue simulators')
+# plt.scatter(observation_times, abs(mothered_array[:,2]), label = 'Mothered simulators')
+# plt.scatter(observation_times, abs(diffs[:,2]), label = 'Difference')
+# plt.grid()
+# plt.yscale('log')
+# plt.legend()
+# plt.xlabel('Time since J2000 [seconds]')
+# plt.ylabel('Observation [m]')
+# plt.title('Observations - Z')
+#
+# libration = read_vector_history_from_file(cwd + 'ephemeris/translation-a.eph')
+# no_libration = read_vector_history_from_file(cwd + 'ephemeris/translation-s.eph')
+# epochs = np.array(list(libration.keys())) / 86400.0
+# libration = dict2array(libration)[:,[1,2,3]]
+# no_libration = dict2array(no_libration)[:,[1,2,3]]
+# diffs = libration - no_libration
+#
+# plt.figure()
+# plt.plot(epochs, norm_rows(diffs), marker = '.')
+# plt.grid()
+# plt.yscale('log')
+# plt.xlabel('Time since J2000 [days]')
+# plt.ylabel(r'$|\Delta\vec r|$ [m]')
+# plt.title('Position difference between the librational and non-librational ephemerides')
+
+# current_ephemeris = dict2array(read_vector_history_from_file(cwd + 'ephemeris/translation-a.eph'))
+# new_states = dict2array(read_vector_history_from_file(cwd + 'simulation-results/model-a1/2023-09-13 16:57:24.579157/state-history.dat'))
+# epochs = current_ephemeris[:,0] / 86400.0
+# diffs = new_states[:,1:4] - current_ephemeris[:,1:4]
+#
+# plt.figure()
+# plt.plot(epochs, norm_rows(diffs))
+# plt.grid()
+# plt.yscale('log')
+# plt.xlabel('Time since J2000')
+# plt.ylabel(r'$\Delta\vec r$ [m]')
+# plt.title('Position differences')
+
+########################################################################################################################
+#                                                                                                                      #
+#                                               LIBRATION AMPLITUDES                                                   #
+#                                                                                                                      #
+########################################################################################################################
+
+bodies = get_solar_system('A1')
+dependents = read_vector_history_from_file('ephemeris/associated-dependents/b.dat')
+eccentricity = compute_eccentricity_from_dependent_variables(dependents)
+mean_motion = compute_mean_motion_from_dependent_variables(dependents, bodies.get('Mars').gravitational_parameter)
+dependents = dict2array(dependents)
+longitude_spectrum = fourier_transform(dependents[:,[0,6]])
+
+B1 = find_max_in_range(longitude_spectrum, [0.98*mean_motion, 1.02*mean_motion]) / eccentricity
+B2 = find_max_in_range(longitude_spectrum, [2.0*0.98*mean_motion, 2.0*1.02*mean_motion]) / eccentricity / eccentricity
+
+plt.figure()
+plt.axvline(mean_motion * 86400.0, ls = 'dashed', c = 'r', linewidth = 3, label = 'Mean motion')
+plt.axvline(2.0 * mean_motion * 86400.0, ls = 'dashed', c = 'r', linewidth = 3, label = 'Mean motion')
+plt.loglog(longitude_spectrum[:,0] * 86400.0, longitude_spectrum[:,1] / eccentricity, marker = '.')
+plt.grid()
+plt.xlabel(r'$\omega$ [rad/day]')
+
+I = bodies.get('Phobos').inertia_tensor
+sigma = (I[1,1] - I[0,0]) / I[2,2]
+B1_anal = 2.0 / ( 1.0 - 3.0*sigma )
+B2_anal = 5.0 / 4.0 + 3.0*sigma / 2.0 * 1.0 / ( 4 - 3.0*sigma ) * (5.0/2.0 + 3.0*B1_anal)
+
+dB1 = B1_anal - B1
+dB2 = B2_anal - B2
 
 print('PROGRAM COMPLETED SUCCESSFULLY')
 

@@ -148,6 +148,14 @@ def extract_elements_from_history(history: dict, index: int | list[int]) -> dict
     return dict(zip(np.array(list(history.keys())), np.vstack(list(history.values()))[:,index]))
 
 
+def find_max_in_range(f: np.ndarray, range_of_interest: list[int]) -> float:
+
+    temp = f[f[:,0] >= range_of_interest[0],:]
+    temp = temp[temp[:,0] <= range_of_interest[1],:]
+
+    return np.max(temp[:,1])
+
+
 def matrix_result_to_column_array(matrix_dict: dict, column_to_extract: int) -> np.ndarray:
 
     epoch_list = list(matrix_dict.keys())
@@ -218,6 +226,79 @@ def read_vector_history_from_file(file_name: str) -> dict:
     return dict(zip(content[:,0], content[:,1:]))
 
 
+def reduce_columns(original: np.ndarray, n: int, loc: int = 0) -> np.ndarray:
+
+    '''
+
+    This function will reduce the number of columns of an array, keeping only one out of each n columns. If the number
+    of columns of the original array is not divisible by n, it will eliminate trailing columns until it is.
+
+
+    :param original:
+    :param n:
+    :param loc:
+    :return:
+    '''
+
+    if n == 1:
+        return original
+
+    else:
+
+        if loc >= n:
+            raise ValueError('(reduce_columns): Incompatible arguments. Argument "loc" must be strictly smaller than '
+                             'argument "n". Provided arguments are: n = ' + str(n) + ' and loc = ' + str(loc) + '.')
+
+        else:
+            original = original[:,:-(len(original.T) % n)]
+            reduced = np.zeros([len(original), len(original.T) / n])
+            for idx in range(len(reduced.T)):
+                reduced[:,idx] = original[:,n*idx+loc]
+
+            return reduced
+
+
+def reduce_rows(original: np.ndarray, n: int, loc: int = 0) -> np.ndarray:
+    '''
+
+    This function will reduce the number of rows of an array, keeping only one out of each n columns. If the number
+    of rows of the original array is not divisible by n, it will eliminate trailing rows until it is.
+
+
+    :param original:
+    :param n:
+    :param loc:
+    :return:
+    '''
+
+    if n == 1:
+        return original
+
+    else:
+
+        if loc >= n:
+            raise ValueError('(reduce_rows): Incompatible arguments. Argument "loc" must be strictly smaller than '
+                             'argument "n". Provided arguments are: n = ' + str(n) + ' and loc = ' + str(loc) + '.')
+
+        else:
+
+            if len(original.shape) < 2:
+                original = np.atleast_2d(original).T
+                flatten = True
+            else:
+                flatten = False
+
+            original = original[:-(len(original) % n),:]
+            reduced = np.zeros([int(len(original) / n), len(original.T), ])
+            for idx in range(len(reduced)):
+                reduced[idx,:] = original[n*idx+loc,:]
+
+            if flatten:
+                reduced = reduced.flatten()
+
+        return reduced
+
+
 '''
 ########################################################################################################################
 ########################################################################################################################
@@ -284,12 +365,12 @@ def retrieve_ephemeris_files(model: str, eph_subdir: str = '') -> tuple:
 
     if model == 'S':
         translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'translation-s.eph'
-        rotational_ephemeris_file = None
+        rotational_ephemeris_file = ''
     elif model == 'A1':
         translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'translation-a.eph'
-        rotational_ephemeris_file = None
+        rotational_ephemeris_file = ''
     elif model == 'A2':
-        translational_ephemeris_file = None
+        translational_ephemeris_file = ''
         rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'rotation-a.eph'
     elif model == 'B':
         translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'translation-b.eph'
@@ -302,6 +383,44 @@ def retrieve_ephemeris_files(model: str, eph_subdir: str = '') -> tuple:
 
     return translational_ephemeris_file, rotational_ephemeris_file
 
+
+def search_for_first_and_last_zeros(f: np.ndarray) -> list[int]:
+
+    to_return = [0, 0]
+    N = len(f)
+
+    if f.shape[1] == 1:
+        f = f.flatten()
+    else:
+        f = f[:,0].flatten()
+
+    idx = -1
+    found = False
+    while not found:
+        idx += 1
+        zero = f[idx]*f[idx+1] <= 0.0
+        if zero:
+            take_second = np.abs(f[idx+1]) < np.abs(f[idx])
+            found = True
+            to_return[0] = idx + take_second
+        elif idx == N-2:
+            warnings.warn('(search_for_first_and_last_zeros): First zero not found. Things might break later.')
+            break
+
+    idx = N
+    found = False
+    while not found:
+        idx -= 1
+        zero = f[idx]*f[idx-1] <= 0.0
+        if zero:
+            take_second = np.abs(f[idx-1]) < np.abs(f[idx])
+            found = True
+            to_return[1] = idx - take_second
+        elif idx == 1:
+            warnings.warn('(search_for_first_and_last_zeros): Last zero not found. Things might break later.')
+            break
+
+    return to_return
 
 def seconds_since_j2000_to_days_hours_minutes_seconds(epoch: float) -> np.ndarray:
 

@@ -19,7 +19,7 @@ ACCELERATIONS
 · Third-body point-mass forces by the Sun, Earth, Deimos and Jupiter
 
 TORQUES
-· Center-of-mass  to  Phobos' full gravity field of the following bodies: Mars, Sun, Earth, Deimos, Jupiter
+· Center-of-mass to Phobos' full gravity field of the following bodies: Mars, Sun, Earth, Deimos, Jupiter
 
 PROPAGATOR
 · Propagator: Cowell for translational states; quaternion and angular velocity vector for rotational states
@@ -28,7 +28,7 @@ PROPAGATOR
 * Simulation time: 10 times the largest dissipation time
 
 INTEGRATOR
-· Integrator: fixed-step RKDP7(8) with a fixed time step of 5 minutes
+· Integrator: fixed-step RKF8(10) with a fixed time step of 5 minutes
 
 '''
 
@@ -37,18 +37,17 @@ from Auxiliaries import *
 ########################################################################################################################
 # SETTINGS
 
-# Dynamics
-average_mean_motion = 0.0002278563609852602
-phobos_mean_rotational_rate = default_phobos_mean_rotational_rate  # In rad/s (more of this number, longitude slope goes down)
-
 # Execution
 verbose = True
 retrieve_dependent_variables = True
 save = True
 simulate_and_save_full_dynamics = False
 generate_ephemeris_file = True
-check_undamped = True
+check_undamped = False
 checks = [0, 0, 0, 0, 0, 0]
+
+# Ephemeris
+eph_subdir = ''
 
 ########################################################################################################################
 
@@ -139,19 +138,12 @@ if simulate_and_save_full_dynamics:
 # GENERATE EPHEMERIS FILE
 if generate_ephemeris_file:
     if verbose: print('Generating ephemeris file...')
-    if not simulate_and_save_full_dynamics:
-        ephemeris_initial_epoch = list(damping_results.forward_backward_states[-1][1].keys())[-1]
-        ephemeris_initial_state = damping_results.forward_backward_states[-1][1][ephemeris_initial_epoch]
-        ephemeris_simulation_time = initial_epoch + simulation_time - ephemeris_initial_epoch
-        ephemeris_propagator_settings = get_propagator_settings('C', bodies, ephemeris_initial_epoch, ephemeris_initial_state, ephemeris_simulation_time, dependent_variables)
-        ephemeris_simulator = numerical_simulation.create_dynamics_simulator(bodies, ephemeris_propagator_settings)
-        ephemeris_state_history = damping_results.forward_backward_states[-1][1] | ephemeris_simulator.state_history
-    else: ephemeris_state_history = full_state_history
-    eph_dir = os.getcwd() + '/ephemeris/new/'
-    save2txt(extract_elements_from_history(ephemeris_state_history, [0, 1, 2, 3, 4, 5]), eph_dir + 'translation-c.eph')
-    save2txt(extract_elements_from_history(ephemeris_state_history, [6, 7, 8, 9, 10, 11, 12]), eph_dir + 'rotation-c.eph')
+    ephemeris_history = damping_results.forward_backward_states[-1][1]
+    eph_dir = os.getcwd() + '/ephemeris/' + eph_subdir
+    save2txt(extract_elements_from_history(ephemeris_history, [0, 1, 2, 3, 4, 5]), eph_dir + 'translation-c.eph')
+    save2txt(extract_elements_from_history(ephemeris_history, [6, 7, 8, 9, 10, 11, 12]), eph_dir + 'rotation-c.eph')
     if retrieve_dependent_variables:
-        save2txt(damping_results.forward_backward_dependent_variables[-1][1], eph_dir + '/associated-dependents/c.dat')
+        save2txt(damping_results.forward_backward_dependent_variables[-1][1], eph_dir + 'associated-dependents/c.dat')
 
 
 # POST PROCESS / CHECKS - THIS IS ONLY POSSIBLE IF THE APPROPRIATE DEPENDENT VARIABLES ARE RETRIEVED.
@@ -159,4 +151,4 @@ if retrieve_dependent_variables:
     run_model_b_checks(checks, bodies, damping_results, check_undamped)
 
 
-print('PROGRAM COMPLETED SUCCESFULLY')
+print('PROGRAM COMPLETED SUCCESSFULLY')

@@ -28,7 +28,7 @@ PROPAGATOR
 * Simulation time: 10 times the largest dissipation time
 
 INTEGRATOR
-· Integrator: fixed-step RKDP7(8) with a fixed time step of 5 minutes
+· Integrator: fixed-step RKF8(10) with a fixed time step of 5 minutes
 
 '''
 
@@ -37,18 +37,17 @@ from Auxiliaries import *
 ########################################################################################################################
 # SETTINGS
 
-# Dynamics
-average_mean_motion = 0.0002278563609852602
-# phobos_mean_rotational_rate = default_phobos_mean_rotational_rate  # In rad/s (more of this number, longitude slope goes down)
-
 # Execution
 verbose = True
 retrieve_dependent_variables = True
 save = True
-simulate_and_save_full_dynamics = False
-generate_ephemeris_file = True
+simulate_and_save_full_dynamics = True
+generate_ephemeris_file = False
 check_undamped = False
 checks = [0, 0, 0, 0, 0, 0]
+
+# Ephemeris
+eph_subdir = ''
 
 ########################################################################################################################
 
@@ -77,8 +76,14 @@ initial_state = get_undamped_initial_state_at_epoch(bodies, 'B', initial_epoch, 
 simulation_time = 10.0 * dissipation_times[-1]
 if retrieve_dependent_variables: dependent_variables = get_list_of_dependent_variables('B', bodies)
 else: dependent_variables = []
+# coefficients = propagation_setup.integrator.CoefficientSets.rkf_1210
+# integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(300.0,
+#                                                                                   coefficients,
+#                                                                                   300.0,
+#                                                                                   300.0,
+#                                                                                   np.inf, np.inf)
+# propagator_settings = get_propagator_settings('B', bodies, initial_epoch, initial_state, simulation_time, dependent_variables, integrator_settings = integrator_settings)
 propagator_settings = get_propagator_settings('B', bodies, initial_epoch, initial_state, simulation_time, dependent_variables)
-
 
 # SIMULATE DYNAMICS BACK AND FORTH AND OBTAIN DAMPED INITIAL STATE TOGETHER WITH A WHOLE BUNCH OF OTHER THINGS
 print('Simulating dynamics. Going into the depths of Tudat...')
@@ -95,7 +100,7 @@ if verbose: print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minute
 if save:
     if verbose: print('Saving results...')
     log = '\n· Initial epoch: ' + str(initial_epoch) + ' seconds\n· Simulation time: ' + \
-          str(simulation_time / constants.JULIAN_DAY) + ' days\n· Damping times: ' + str(dissipation_times) + '\n· Integrator: RKDP7(8)\n· Time step: 4.5min\n'
+          str(simulation_time / constants.JULIAN_DAY) + ' days\n· Damping times: ' + str(dissipation_times) + '\n· Integrator: RKF8(10)\n· Time step: 4.5min\n'
     save_initial_states(damping_results, save_dir + 'initial_states.dat')
     with open(save_dir + 'log.log', 'w') as file: file.write(log)
     save2txt(damping_results.forward_backward_states[0][0], save_dir + 'states-undamped.dat')
@@ -139,19 +144,13 @@ if simulate_and_save_full_dynamics:
 # GENERATE EPHEMERIS FILE
 if generate_ephemeris_file:
     if verbose: print('Generating ephemeris file...')
-    # if not simulate_and_save_full_dynamics:
-    #     ephemeris_initial_epoch = list(damping_results.forward_backward_states[-1][1].keys())[-1]
-    #     ephemeris_initial_state = damping_results.forward_backward_states[-1][1][ephemeris_initial_epoch]
-    #     ephemeris_simulation_time = initial_epoch + simulation_time - ephemeris_initial_epoch
-    #     ephemeris_propagator_settings = get_propagator_settings('B', bodies, ephemeris_initial_epoch, ephemeris_initial_state, ephemeris_simulation_time, dependent_variables)
-    #     ephemeris_simulator = numerical_simulation.create_dynamics_simulator(bodies, ephemeris_propagator_settings)
-    #     ephemeris_state_history = damping_results.forward_backward_states[-1][1] | ephemeris_simulator.state_history
-    # else: ephemeris_history = full_state_history
     ephemeris_history = damping_results.forward_backward_states[-1][1]
-    eph_dir = os.getcwd() + '/ephemeris/rkf108-dt300/'
+    eph_dir = os.getcwd() + '/ephemeris/' + eph_subdir
+    os.makedirs(eph_dir, exist_ok=True)
     save2txt(extract_elements_from_history(ephemeris_history, [0, 1, 2, 3, 4, 5]), eph_dir + 'translation-b.eph')
     save2txt(extract_elements_from_history(ephemeris_history, [6, 7, 8, 9, 10, 11, 12]), eph_dir + 'rotation-b.eph')
     if retrieve_dependent_variables:
+        os.makedirs(eph_dir + 'associated-dependents/', exist_ok=True)
         save2txt(damping_results.forward_backward_dependent_variables[-1][1], eph_dir + 'associated-dependents/b.dat')
 
 
@@ -160,4 +159,4 @@ if retrieve_dependent_variables:
     run_model_b_checks(checks, bodies, damping_results, check_undamped)
 
 
-print('PROGRAM COMPLETED SUCCESFULLY')
+print('PROGRAM COMPLETED SUCCESSFULLY')
