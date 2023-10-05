@@ -8,19 +8,14 @@ from Auxiliaries import *
 post_process_single_estimation = True
 post_process_estimation_duration_batch = False
 
-time_to_show = 200
-# batch_dir = 'bravo/batch 2023-09-16 08:14:54.184457'
-batch_dir = 'base-1/batch long'
-# batch_dir = 'alpha/batch 2023-09-17 14:56:13.123479'
+time_to_show = 250
+batch_dir = 'UCX/batch full'
 run_dir = batch_dir + '/estimation-time-' + str(time_to_show)
 
-if 'alpha' in batch_dir:
-    # exclude_estimation_times = [90.0]
-    exclude_estimation_times = []
-else:
-    exclude_estimation_times = []
+exclude_estimation_times = []
 
 plot_cartesian_things = False
+plot_only_post_fit = True
 
 ########################################################################################################################
 ########################################################################################################################
@@ -35,9 +30,9 @@ if post_process_single_estimation:
     settings = EstimationSettings(read_dir + 'settings.log')
     trans_eph, rot_eph = retrieve_ephemeris_files(settings.observation_settings['observation model'])
     bodies = get_solar_system(settings.observation_settings['observation model'], trans_eph, rot_eph)
-    orbital_period = dict2array(read_vector_history_from_file('ephemeris/associated-dependents/b.dat'))[:,[0,7]]
+    orbital_period = dict2array(read_vector_history_from_file('ephemeris/associated-dependents/c.dat'))[:,[0,7]]
     orbital_period[:,1] = TWOPI / np.sqrt(bodies.get('Mars').gravitational_parameter / orbital_period[:,1] ** 3)
-    orbital_period, trash = average_over_integer_number_of_orbits(orbital_period, dict2array(read_vector_history_from_file('ephemeris/associated-dependents/b.dat'))[:,[0,7,8,9,10,11,12]])
+    orbital_period, trash = average_over_integer_number_of_orbits(orbital_period, dict2array(read_vector_history_from_file('ephemeris/associated-dependents/c.dat'))[:,[0,7,8,9,10,11,12]])
     orbital_period = orbital_period[0]
     ########################################################################################################################
     #   SETTINGS REQUIRED IN THIS FILE
@@ -95,9 +90,14 @@ if post_process_single_estimation:
         residual_history_array = dict2array(residual_histories[0])
         indicators_array = dict2array(residual_statistical_indicators_per_iteration[0])
         for k in range(number_of_iterations+1):
-            if k == 0: title = 'Pre-fit residual history'
-            elif k == number_of_iterations: title = 'Estimation post-fit residual history'
-            else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
+            if k == 0:
+                if plot_only_post_fit: continue
+                else: title = 'Pre-fit residual history'
+            elif k == number_of_iterations:
+                title = 'Estimation post-fit residual history'
+            else:
+                if plot_only_post_fit: continue
+                else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
             plt.figure()
             plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, 100.0 * residual_history_array[:,3*k+1], label='x')
             plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, 100.0 * residual_history_array[:,3*k+2], label='y')
@@ -155,9 +155,14 @@ if post_process_single_estimation:
         residual_history_array = dict2array(residual_histories[1])
         indicators_array = dict2array(residual_statistical_indicators_per_iteration[1])
         for k in range(number_of_iterations+1):
-            if k == 0: title = 'Pre-fit residual history'
-            elif k == number_of_iterations: title = 'Estimation post-fit residual history'
-            else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
+            if k == 0:
+                if plot_only_post_fit: continue
+                else: title = 'Pre-fit residual history'
+            elif k == number_of_iterations:
+                title = 'Estimation post-fit residual history'
+            else:
+                if plot_only_post_fit: continue
+                else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
             plt.figure()
             plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, 100.0 * residual_history_array[:,k+1])
             plt.grid()
@@ -187,19 +192,22 @@ if post_process_single_estimation:
 
         residual_history_array = dict2array(residual_histories[-1])
         indicators_array = dict2array(residual_statistical_indicators_per_iteration[-1])
-        if 'base' in run_dir: cosa = 'base'
-        if 'bravo' in run_dir: cosa = 'bravo'
-        if 'alpha' in run_dir: cosa = 'alpha'
-        if 'base' in run_dir:
+        cosa = ' (' + settings.get_estimation_type() + ')'
+        if 'X' in run_dir:
             order = [1,0,2]
         else:
             order = [1,2,0]
         for k in range(number_of_iterations + 1):
-            if k == 0: title = 'Pre-fit residual history (' + cosa + ')'
-            elif k == number_of_iterations: title = 'Estimation post-fit residual history'
-            else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
+            if k == 0:
+                if plot_only_post_fit: continue
+                else: title = 'Pre-fit residual history' + cosa
+            elif k == number_of_iterations:
+                title = 'Estimation post-fit residual history'
+            else:
+                if plot_only_post_fit: continue
+                else: title = 'Post-fit residual history (iteration ' + str(k) + ')'
             plt.figure()
-            if 'base' in run_dir:
+            if 'X' in run_dir:
                 plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, 100.0 * residual_history_array[:,3*k+2], label = 'S', c = colors[1])
                 plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, 100.0 * residual_history_array[:,3*k+1], label = 'R', c = colors[0])
                 plt.plot((residual_history_array[:,0] - initial_estimation_epoch) / 86400.0, 100.0 * residual_history_array[:,3*k+3], label = 'W', c = colors[2])
@@ -364,11 +372,11 @@ if post_process_single_estimation:
     cb.set_ticks(ticks = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], labels = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], fontsize = 15)
     plt.savefig(read_dir + 'correlations.pdf')
 
-    first_days = (residual_history_array[:, 0] - initial_estimation_epoch) / orbital_period <= 500.0
+    first_days = (residual_history_array[:, 0] - initial_estimation_epoch) / orbital_period <= 10000.0
     plt.figure()
-    plt.scatter(-100.0 * residual_history_array[first_days,3*k+1], -100.0 * residual_history_array[first_days,3*k+2], c = (residual_history_array[first_days, 0] - initial_estimation_epoch) / orbital_period)
-    cb = plt.colorbar(label = 'Time [orbital periods]')
-    cb.set_ticks(ticks=[0, 56, 112, 168, 224, 280], labels=[0, 56, 112, 168, 224, 280], fontsize=15)
+    plt.scatter(-100.0 * residual_history_array[first_days,3*k+1], -100.0 * residual_history_array[first_days,3*k+2], c = (residual_history_array[first_days, 0] - initial_estimation_epoch) / 86400.0)
+    cb = plt.colorbar(label = 'Time [days]')
+    # cb.set_ticks(ticks=[0, 56, 112, 168, 224, 280], labels=[0, 56, 112, 168, 224, 280], fontsize=15)
     # plt.scatter(-100.0 * residual_history_array[0,3*k+1], -100.0 * residual_history_array[0,3*k+2], c = 'r')
     # plt.scatter(-100.0 * residual_history_array[np.sum(first_days)-1,3*k+1], -100.0 * residual_history_array[np.sum(first_days)-1,3*k+2], c = 'r')
     plt.scatter(0.0, 0.0, c='k')
@@ -377,22 +385,13 @@ if post_process_single_estimation:
     plt.axis('equal')
     plt.xlabel('R [cm]')
     plt.ylabel('S [cm]')
-    plt.title('Relative orbit')
+    plt.title('In-plane residuals')
     plt.savefig(read_dir + 'residuals-in-plane.pdf')
 
-    # plt.figure()
-    # plt.plot(-100.0 * residual_history_array[:3238, 3 * k + 1], -100.0 * residual_history_array[:3238, 3 * k + 2])
-    # plt.plot(-100.0 * residual_history_array[3238:, 3 * k + 1], -100.0 * residual_history_array[3238:, 3 * k + 2])
-    # plt.scatter(0.0, 0.0, c='k')
-    # plt.grid()
-    # plt.xlabel('R [cm]')
-    # plt.ylabel('S [cm]')
-    # plt.title('Relative orbit')
-
     plt.figure()
-    plt.scatter(-100.0 * residual_history_array[first_days,3*k+1], -100.0 * residual_history_array[first_days,3*k+3], c = (residual_history_array[first_days,0] - initial_estimation_epoch) / orbital_period)
-    cb = plt.colorbar(label = 'Time [orbital periods]')
-    cb.set_ticks(ticks=[0, 56, 112, 168, 224, 280], labels=[0, 56, 112, 168, 224, 280], fontsize=15)
+    plt.scatter(-100.0 * residual_history_array[first_days,3*k+1], -100.0 * residual_history_array[first_days,3*k+3], c = (residual_history_array[first_days,0] - initial_estimation_epoch) / 86400.0)
+    cb = plt.colorbar(label = 'Time [days]')
+    # cb.set_ticks(ticks=[0, 56, 112, 168, 224, 280], labels=[0, 56, 112, 168, 224, 280], fontsize=15)
     # plt.scatter(-100.0 * residual_history_array[0,3*k+1], -100.0 * residual_history_array[0,3*k+3], c = 'r')
     # plt.scatter(-100.0 * residual_history_array[np.sum(first_days)-1,3*k+1], -100.0 * residual_history_array[np.sum(first_days)-1,3*k+3], c = 'r')
     plt.scatter(0.0, 0.0, c = 'k')
@@ -400,7 +399,7 @@ if post_process_single_estimation:
     plt.axis('equal')
     plt.xlabel('R [cm]')
     plt.ylabel('W [cm]')
-    plt.title('Relative orbit')
+    plt.title('Out-of-plane residuals')
     plt.savefig(read_dir + 'residuals-out-of-plane.pdf')
 
 if post_process_estimation_duration_batch:
@@ -743,7 +742,7 @@ if post_process_estimation_duration_batch:
         plt.figure()
         for k in range(len(estimated_parameters)-1):
             temp_to_plot = 100.0 * abs(data_matrix[:,26+extra+k] / true_parameters[length_of_estimated_state_vector + k])
-            plt.plot(data_matrix[:,0] / 86400.0, temp_to_plot, marker = '.', label = plot_legends[k])
+            plt.plot(data_matrix[1:,0] / 86400.0, temp_to_plot[1:], marker = '.', label = plot_legends[k])
         plt.grid()
         # plt.yscale('log')
         plt.legend()

@@ -6,10 +6,10 @@
 ####    ESTIMATION SETTINGS    ####
 ###################################
 
-· ESTIMATION MODEL: 			A1
+· ESTIMATION MODEL: 			U
 · INITIAL ESTIMATION EPOCH:		1.0 YEAR
-· DURATION OF ESTIMATED ARC:	200.0 DAY
-· ESTIMATED PARAMETERS:			initial state, C20  	# Options: initial state, A, C20 or C22, or a combination thereof (for example "initial state, A" or "initial state, C20").
+· DURATION OF ESTIMATED ARC:	1.0, 7.0, 14.0, 21.0, 30.0, 45.0, 60.0, 75.0, 90.0, 100.0, 150.0, 200.0 DAY
+· ESTIMATED PARAMETERS:			initial state, C20  	# Options: initial state, B, C20 or C22, or a combination thereof (for example "initial state, B" or "initial state, C20").
 · NORM POSITION RESIDUALS:		True
 · CONVERT RESIDUALS TO RSW:		True
 
@@ -18,7 +18,7 @@
 ####    OBSERVATION SETTINGS    ####
 ####################################
 
-· OBSERVATION MODEL:			B
+· OBSERVATION MODEL:			C
 · OBSERVATION TYPE:				position						# Options: position or orientation.
 · EPOCH OF FIRST OBSERVATION:	1.0 HOUR (OFFSET)
 · EPOCH OF LAST OBSERVATION:	-1.0 HOUR (OFFSET)
@@ -64,5 +64,4 @@
 
 · SAVE RESULTS: 					True
 · SAVE STATE HISTORY PER ITERATION: True
-· SIMULATION NAME:					long batch
-
+· SIMULATION NAME:					

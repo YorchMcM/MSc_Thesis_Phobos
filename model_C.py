@@ -1,6 +1,6 @@
 '''
 
-In this script we will define model C. It propagates the translational and rotational dynamics TOGETHER.
+In this script we will define model B. It propagates the translational and rotational dynamics TOGETHER.
 
 Note: the elements marked with an asterisk (*) are partially or fully defined in this script and are regarded as
 something close to "user inputs". The others are fully set somewhere in the Auxiliaries module.
@@ -9,17 +9,17 @@ ENVIRONMENT
 · Global frame origin: Mars' center of mass
 · Global frame orientation: Earth's equator of J2000
 · Mars' gravity field: default from Tudat
-· Phobos' gravity field: From Le Maistre (2019) - All coefficients up to D/O 4/4
+· Phobos' gravity field: From Le Maistre (2019) - Only coefficients C00, C20 and C22.
 · Phobos' inertia tensor: Derived from the harmonic coefficients.
 · Ephemeris and gravitational parameters of all other bodies: defaults from Tudat
 
 ACCELERATIONS
 · Mars' harmonic coefficients up to degree and order 12.
-· Phobos' full gravity field.
+· Phobos' quadrupole gravity field (C20 & C22).
 · Third-body point-mass forces by the Sun, Earth, Deimos and Jupiter
 
 TORQUES
-· Center-of-mass to Phobos' full gravity field of the following bodies: Mars, Sun, Earth, Deimos, Jupiter
+· Center-of-mass to Phobos' quadrupole gravity field of the following bodies: Mars, Sun, Earth, Deimos, Jupiter
 
 PROPAGATOR
 · Propagator: Cowell for translational states; quaternion and angular velocity vector for rotational states
@@ -47,14 +47,14 @@ check_undamped = False
 checks = [0, 0, 0, 0, 0, 0]
 
 # Ephemeris
-eph_subdir = ''
+eph_subdir = 'true/'
 
 ########################################################################################################################
 
 if sum(checks) > 0:
     retrieve_dependent_variables = True
 
-#                                  4h,  8h,  16h,  1d 8h, 2d 16h, 5d 8h, 10d 16h, 21d 8h, 42d 16h, 85d 8h, 170d 16h, 341d 8h  // Up to 3413d 8h in get_zero_proper_mode function
+#                                  4h,  8h,  16h,  1d 8h, 2d 16h, 5d 8h, 10d 16h, 21d 8h, 42d 16h, 85d 8h, 170d 16h, 341d 8h, 682d 16h  // Up to 6826d 16h in get_zero_proper_mode function
 dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0,  64.0,   128.0, 256.0,   512.0,  1024.0,  2048.0, 4096.0,   8192.0])*3600.0)  # In seconds.
 # dissipation_times = list(np.array([4.0, 8.0, 16.0, 32.0,  64.0, 128.0, 256.0, 512.0, 1024.0])*3600.0)  # In seconds.
 
@@ -72,12 +72,18 @@ bodies = get_solar_system('C')
 # DEFINE PROPAGATION
 if verbose: print('Setting up propagation...')
 initial_epoch = 0.0
-initial_state = get_undamped_initial_state_at_epoch(bodies, 'C', initial_epoch, phobos_mean_rotational_rate)
+initial_state = get_undamped_initial_state_at_epoch(bodies, 'C', initial_epoch)
 simulation_time = 10.0 * dissipation_times[-1]
 if retrieve_dependent_variables: dependent_variables = get_list_of_dependent_variables('C', bodies)
 else: dependent_variables = []
+# coefficients = propagation_setup.integrator.CoefficientSets.rkf_1210
+# integrator_settings = propagation_setup.integrator.runge_kutta_variable_step_size(300.0,
+#                                                                                   coefficients,
+#                                                                                   300.0,
+#                                                                                   300.0,
+#                                                                                   np.inf, np.inf)
+# propagator_settings = get_propagator_settings('B', bodies, initial_epoch, initial_state, simulation_time, dependent_variables, integrator_settings = integrator_settings)
 propagator_settings = get_propagator_settings('C', bodies, initial_epoch, initial_state, simulation_time, dependent_variables)
-
 
 # SIMULATE DYNAMICS BACK AND FORTH AND OBTAIN DAMPED INITIAL STATE TOGETHER WITH A WHOLE BUNCH OF OTHER THINGS
 print('Simulating dynamics. Going into the depths of Tudat...')
@@ -94,7 +100,7 @@ if verbose: print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minute
 if save:
     if verbose: print('Saving results...')
     log = '\n· Initial epoch: ' + str(initial_epoch) + ' seconds\n· Simulation time: ' + \
-          str(simulation_time / constants.JULIAN_DAY) + ' days\n· Damping times: ' + str(dissipation_times) + '\n'
+          str(simulation_time / constants.JULIAN_DAY) + ' days\n· Damping times: ' + str(dissipation_times) + '\n· Integrator: RKF8(10)\n· Time step: 4.5min\n'
     save_initial_states(damping_results, save_dir + 'initial_states.dat')
     with open(save_dir + 'log.log', 'w') as file: file.write(log)
     save2txt(damping_results.forward_backward_states[0][0], save_dir + 'states-undamped.dat')
@@ -133,22 +139,24 @@ if simulate_and_save_full_dynamics:
             save2txt(full_dependent_variable_history, save_dir + 'dependents-d' + time_str + '-full.dat')
     tac = time()
     if verbose: print('SIMULATIONS FINISHED. Time taken:', (tac-tic) / 60.0, 'minutes.')
-
-
+    
+    
 # GENERATE EPHEMERIS FILE
 if generate_ephemeris_file:
     if verbose: print('Generating ephemeris file...')
     ephemeris_history = damping_results.forward_backward_states[-1][1]
     eph_dir = os.getcwd() + '/ephemeris/' + eph_subdir
+    os.makedirs(eph_dir, exist_ok=True)
     save2txt(extract_elements_from_history(ephemeris_history, [0, 1, 2, 3, 4, 5]), eph_dir + 'translation-c.eph')
     save2txt(extract_elements_from_history(ephemeris_history, [6, 7, 8, 9, 10, 11, 12]), eph_dir + 'rotation-c.eph')
     if retrieve_dependent_variables:
+        os.makedirs(eph_dir + 'associated-dependents/', exist_ok=True)
         save2txt(damping_results.forward_backward_dependent_variables[-1][1], eph_dir + 'associated-dependents/c.dat')
 
 
 # POST PROCESS / CHECKS - THIS IS ONLY POSSIBLE IF THE APPROPRIATE DEPENDENT VARIABLES ARE RETRIEVED.
 if retrieve_dependent_variables:
-    run_model_b_checks(checks, bodies, damping_results, check_undamped)
+    run_models_c_and_e_checks(checks, bodies, damping_results, check_undamped)
 
 
 print('PROGRAM COMPLETED SUCCESSFULLY')

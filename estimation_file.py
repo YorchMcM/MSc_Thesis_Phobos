@@ -99,7 +99,7 @@ convergence_checker = estimation.estimation_convergence_checker(maximum_iteratio
 for estimation_idx in range(settings.number_of_estimations):
 
     duration_of_estimated_arc = arc_durations[estimation_idx]
-    use_tudat_for_estimation = duration_of_estimated_arc <= 30.0 * constants.JULIAN_DAY and estimation_model == 'A1'
+    use_tudat_for_estimation = duration_of_estimated_arc <= 30.0 * constants.JULIAN_DAY and estimation_model == 'U'
     # settings.estimation_settings['duration of estimated arc'] = duration_of_estimated_arc
 
     print('\nEstimating an arc of ' + str(int(duration_of_estimated_arc / 86400.0)) + ' days.')

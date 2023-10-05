@@ -1572,30 +1572,70 @@ colors = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E', '#77AC30', '#4DBEEE', '#A2
 #                                                                                                                      #
 ########################################################################################################################
 
-bodies = get_solar_system('A1')
-dependents = read_vector_history_from_file('ephemeris/associated-dependents/b.dat')
-eccentricity = compute_eccentricity_from_dependent_variables(dependents)
-mean_motion = compute_mean_motion_from_dependent_variables(dependents, bodies.get('Mars').gravitational_parameter)
-dependents = dict2array(dependents)
-longitude_spectrum = fourier_transform(dependents[:,[0,6]])
+# bodies = get_solar_system('U')
+# dependents = read_vector_history_from_file('ephemeris/associated-dependents/c.dat')
+# eccentricity = compute_eccentricity_from_dependent_variables(dependents)
+# mean_motion = compute_mean_motion_from_dependent_variables(dependents, bodies.get('Mars').gravitational_parameter)
+# dependents = dict2array(dependents)
+# longitude_spectrum = fourier_transform(dependents[:,[0,6]])
+#
+# B1 = find_max_in_range(longitude_spectrum, [0.98*mean_motion, 1.02*mean_motion]) / eccentricity
+# B2 = find_max_in_range(longitude_spectrum, [2.0*0.98*mean_motion, 2.0*1.02*mean_motion]) / eccentricity / eccentricity
+#
+# plt.figure()
+# plt.axvline(mean_motion * 86400.0, ls = 'dashed', c = 'r', linewidth = 3, label = 'Mean motion')
+# plt.axvline(2.0 * mean_motion * 86400.0, ls = 'dashed', c = 'r', linewidth = 3, label = 'Mean motion')
+# plt.loglog(longitude_spectrum[:,0] * 86400.0, longitude_spectrum[:,1] / eccentricity, marker = '.')
+# plt.grid()
+# plt.xlabel(r'$\omega$ [rad/day]')
+#
+# I = bodies.get('Phobos').inertia_tensor
+# sigma = (I[1,1] - I[0,0]) / I[2,2]
+# B1_anal = 2.0 / ( 1.0 - 3.0*sigma )
+# B2_anal = 5.0 / 4.0 + 3.0*sigma / 2.0 * 1.0 / ( 4 - 3.0*sigma ) * (5.0/2.0 + 3.0*B1_anal)
+#
+# dB1 = B1_anal - B1
+# dB2 = B2_anal - B2
 
-B1 = find_max_in_range(longitude_spectrum, [0.98*mean_motion, 1.02*mean_motion]) / eccentricity
-B2 = find_max_in_range(longitude_spectrum, [2.0*0.98*mean_motion, 2.0*1.02*mean_motion]) / eccentricity / eccentricity
+# coupled = read_vector_history_from_file('ephemeris/true/translation-c.eph')
+# wrong_lib = read_vector_history_from_file('simulation-results/model-u/wrong-libration/state-history.dat')
+# right_lib = read_vector_history_from_file('simulation-results/model-u/right-libration/state-history.dat')
+# uncoupled = read_vector_history_from_file('ephemeris/true/translation-u.eph')
+#
+# diffs = dict2array(compare_results(coupled, uncoupled, list(coupled.keys())))
+# diffs_right = dict2array(compare_results(coupled, right_lib, list(coupled.keys())))
+# diffs_wrong = dict2array(compare_results(coupled, wrong_lib, list(coupled.keys())))
+# diffs_right_wrong = dict2array(compare_results(right_lib, wrong_lib, list(coupled.keys())))
+#
+# epochs = diffs[:,0] / 86400.0
+# first_month = epochs <= 999999999.0
+# plt.figure()
+# plt.semilogy(epochs[first_month], norm_rows(diffs[first_month,1:4]), label = 'Wrong amplitude')
+# plt.semilogy(epochs[first_month], norm_rows(diffs_wrong[first_month,1:4]), label = 'Wrong amplitude')
+# plt.semilogy(epochs[first_month], norm_rows(diffs_right[first_month,1:4]), label = 'Right amplitude')
+# plt.semilogy(epochs, norm_rows(diffs_right_wrong[:,1:4]), label = 'Diffs')
+# plt.grid()
+# plt.legend()
+# plt.xlabel('Time since J2000 [days]')
+# plt.title('Coupling effects')
+#
+# prueba = dict2array(compare_results(right_lib, uncoupled, list(uncoupled.keys())))
+# plt.figure()
+# plt.plot(epochs, norm_rows(prueba[:,1:4]))
+# plt.grid()
 
-plt.figure()
-plt.axvline(mean_motion * 86400.0, ls = 'dashed', c = 'r', linewidth = 3, label = 'Mean motion')
-plt.axvline(2.0 * mean_motion * 86400.0, ls = 'dashed', c = 'r', linewidth = 3, label = 'Mean motion')
-plt.loglog(longitude_spectrum[:,0] * 86400.0, longitude_spectrum[:,1] / eccentricity, marker = '.')
-plt.grid()
-plt.xlabel(r'$\omega$ [rad/day]')
-
+bodies = get_solar_system('U')
+coupled_dependents = read_vector_history_from_file('ephemeris/associated-dependents/c.dat')
+eccentricity = compute_eccentricity_from_dependent_variables(coupled_dependents)
+mean_motion = compute_mean_motion_from_dependent_variables(coupled_dependents, bodies.get('Mars').gravitational_parameter)
+B = compute_scaled_libration_amplitude_from_dependent_variables(coupled_dependents)
+coupled_dependents = dict2array(coupled_dependents)
+libration_fourier = fourier_transform(coupled_dependents[:,[0,6]])
+B2 = find_max_in_range(libration_fourier, np.array([1.98, 2.02])*mean_motion) / eccentricity / eccentricity
 I = bodies.get('Phobos').inertia_tensor
 sigma = (I[1,1] - I[0,0]) / I[2,2]
-B1_anal = 2.0 / ( 1.0 - 3.0*sigma )
-B2_anal = 5.0 / 4.0 + 3.0*sigma / 2.0 * 1.0 / ( 4 - 3.0*sigma ) * (5.0/2.0 + 3.0*B1_anal)
-
-dB1 = B1_anal - B1
-dB2 = B2_anal - B2
+B1_anal = 2.0 / (1.0 - 3.0*sigma)
+B2_anal = (1.0/(4.0-3.0*sigma)) * (5.0+4.5*sigma*B1_anal)
 
 print('PROGRAM COMPLETED SUCCESSFULLY')
 

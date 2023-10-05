@@ -6,8 +6,8 @@ TO THEIR REQUIRING TUDAT.
 '''
 
 # NATIVE IMPORTS
-import sys
 import os
+import sys
 import warnings
 from datetime import datetime
 from shutil import copyfile
@@ -15,8 +15,12 @@ from shutil import copyfile
 from time import time
 from cycler import cycler
 
-if '/home/yorch/tudat-bundle/cmake-build-release/tudatpy' not in sys.path:
-    sys.path.extend(['/home/yorch/tudat-bundle/cmake-build-release/tudatpy'])
+if 'yorch' in os.getcwd():
+    if '/home/yorch/tudat-bundle/cmake-build-release/tudatpy' not in sys.path:
+        sys.path.extend(['/home/yorch/tudat-bundle/cmake-build-release/tudatpy'])
+else:
+    if '/home3/jorge/tudat-bundle-yorch/cmake-build-release/tudatpy' not in sys.path:
+        sys.path.extend(['/home3/jorge/tudat-bundle-yorch/cmake-build-release/tudatpy'])
 
 from astromath import *
 
@@ -43,10 +47,10 @@ from tudatpy.io import save2txt
 
 import matplotlib.font_manager as fman
 
-for font in fman.findSystemFonts(r'/home/yorch/thesis/Roboto_Slab'):
-    fman.fontManager.addfont(font)
-
-fman.fontManager.addfont(r'/home/yorch/thesis/fonts/Gulliver Regular/Gulliver Regular.otf')
+# for font in fman.findSystemFonts(r'/home/yorch/thesis/Roboto_Slab'):
+#     fman.fontManager.addfont(font)
+#
+# fman.fontManager.addfont(r'/home/yorch/thesis/fonts/Gulliver Regular/Gulliver Regular.otf')
 
 colors = ['#0072BD', '#D95319', '#EDB120', '#7E2F8E', '#77AC30', '#4DBEEE', '#A2142F', '#7f7f7f', '#bcbd22', '#17becf']
 # plt.rc('font', family = 'Roboto Slab')
@@ -291,7 +295,7 @@ def get_gravitational_field(frame_name: str,
 
     # The gravitational field implemented here is that in Le Maistre et al. (2019).
 
-    datadir = os.getcwd() + '/Normalized gravity fields/'
+    datadir = cwd + '/Normalized gravity fields/'
     cosines_file = datadir + 'cosines Le Maistre.txt'
     sines_file = datadir + 'sines Le Maistre.txt'
 
@@ -322,7 +326,7 @@ def get_solar_system(model: str,
     '''
     This function will create the "bodies" object, just so we don't have all this lines in all models. Phobos is to be
     created from scratch. All its properties are created according to the model provided to the function through the
-    "model" argument: fully synchronous (S), model A1 (A1), model A2 (A2), model B (B) or model C (C). More information
+    "model" argument: fully synchronous (S), model U (U), model A2 (A2), model B (B) or model C (C). More information
     on the environment associated to each model can be found in each model's file.
 
     For the integration of the rotational dynamics, Phobos needs to have an associated ephemeris. Similarly, when
@@ -334,18 +338,15 @@ def get_solar_system(model: str,
     supported option is that of selecting the libration amplitude. The named argument should be called
     "scaled_libration_amplitude".
 
-    :param model: The model to be used. It can be S, A1, A2, B or C.
+    :param model: The model to be used. It can be S, U, A2, B or C.
     :param translational_ephemeris_file: The name of a file containing a history of state vectors to assign to Phobos.
     :param rotational_ephemeris_file: The name of a file containing a history of state vectors to assign to Phobos.
     :param **additional_inputs: Other stuff. For now, the only thing supported is "libration_amplitude".
     :return: bodies
     '''
 
-    if model not in ['S', 'A1', 'A2', 'B', 'C']:
+    if model not in ['S', 'U', 'C', 'E']:
         raise ValueError('Model provided is invalid.')
-
-    if model == 'A2' and translational_ephemeris_file == '':
-        warnings.warn('The model you selected requires a translational ephemeris. No ephemeris file was provided. Reverting to default spice ephemeris.')
 
     # WE FIRST CREATE MARS.
     bodies_to_create = ["Sun", "Earth", "Mars", "Deimos", "Jupiter"]
@@ -375,28 +376,28 @@ def get_solar_system(model: str,
                                                                                                          'J2000',
                                                                                                          'Phobos_body_fixed')
     # Gravity field.
-    if model in ['S', 'A1', 'A2', 'B']: field_type = 'QUAD'
+    if model in ['S', 'U', 'C']: field_type = 'QUAD'
     else: field_type = 'FULL'
     if 'gravity_field_settings' in additional_inputs:
         body_settings.get('Phobos').gravity_field_settings = additional_inputs['gravity_field_settings']
     else:
         body_settings.get('Phobos').gravity_field_settings = get_gravitational_field('Phobos_body_fixed', field_type)
-    I = 0.43  # Mean moment of inertia taken from Rambaux 2012 (no other number found anywhere else)
+    I = ((11.1/14.0)**2)*( 0.353657 + 0.418499 + 0.490239 ) / 3.0  # Mean moment of inertia from the tensor provided by Le Maistre et al. (2019)
     body_settings.get('Phobos').gravity_field_settings.scaled_mean_moment_of_inertia = I
 
     # AND LASTLY THE LIST OF BODIES IS CREATED.
     bodies = environment_setup.create_system_of_bodies(body_settings)
 
     # The libration can only be assigned to the rotation model that is created from the settings when the SystemOfBodies object is created.
-    if model == 'A1' and rotational_ephemeris_file == '':
+    if model == 'U' and rotational_ephemeris_file == '':
         if 'scaled_libration_amplitude' in additional_inputs:
             scaled_amplitude = additional_inputs['scaled_libration_amplitude']
         else:
             if 'model_for_libration_amplitude_computation' in additional_inputs:
                 temp = additional_inputs['model_for_libration_amplitude_computation'].lower()
             else:
-                temp = 'b'
-            dependents = read_vector_history_from_file(os.getcwd() + '/ephemeris/associated-dependents/' + temp + '.dat')
+                temp = 'c'
+            dependents = read_vector_history_from_file(cwd + '/ephemeris/associated-dependents/' + temp + '.dat')
             scaled_amplitude = compute_scaled_libration_amplitude_from_dependent_variables(dependents)
         bodies.get('Phobos').rotation_model.libration_calculator = numerical_simulation.environment.DirectLongitudeLibrationCalculator(scaled_amplitude)
 
@@ -459,7 +460,10 @@ def get_benchmark_integrator_settings(step_size: float) \
 def get_list_of_dependent_variables(model: str, bodies: numerical_simulation.environment.SystemOfBodies) \
         -> list[propagation_setup.dependent_variable.PropagationDependentVariables]:
 
-    if model in ['S', 'A1']:
+    if model not in ['S', 'U', 'C', 'E']:
+        raise ValueError('(get_list_of_dependent_variables): Invalid model.')
+
+    if model in ['S', 'U']:
         mutual_spherical = propagation_setup.acceleration.mutual_spherical_harmonic_gravity_type
         mars_acceleration_dependent_variable = propagation_setup.dependent_variable.single_acceleration_norm(mutual_spherical, 'Phobos', 'Mars')
         equator = MarsEquatorOfDate(bodies)
@@ -478,7 +482,7 @@ def get_list_of_dependent_variables(model: str, bodies: numerical_simulation.env
                                         acceleration_norm_from_body_on_phobos('Jupiter')  # 19
                                         ]
 
-    elif model in ['A2', 'B', 'C']:
+    elif model in ['C', 'E']:
         equator = MarsEquatorOfDate(bodies)
         euler_angles_wrt_mars_equator_dependent_variable = \
             propagation_setup.dependent_variable.custom_dependent_variable(equator.get_euler_angles_wrt_mars_equator, 3)
@@ -508,7 +512,7 @@ def get_propagator_settings(model: str,
     '''
     This function will create the propagator settings for all models. The type of dynamics and therefore the
     characteristics of the resulting propagator settings object are fully defined by the model passed through the
-    "model" argument: synchronous (S), model A1 (A1), model A2 (A2), model B (B) or model C (C). More information
+    "model" argument: synchronous (S), model U (U), model A2 (A2), model B (B) or model C (C). More information
     on the dynamcis associated to each model can be found in each model's file.
 
     The other arguments are mainly controls for the simulation: initial epoch, initial state and simulation duration.
@@ -519,7 +523,7 @@ def get_propagator_settings(model: str,
     present function.
 
     :param bodies: The system of bodies.
-    :param model: The model to get the propagator settings for. It can be 'S', 'A1', 'A2', 'B' or 'C'.
+    :param model: The model to get the propagator settings for. It can be 'S', 'U', 'A2', 'C' or 'E'.
     :param initial_epoch: The initial epoch of the simulation. Defaults to 0.0.
     :param initial_state: The initial state of the simulation. In very few cases it will be optional.
     :param simulation_time: The total simulation time
@@ -556,25 +560,24 @@ def get_propagator_settings(model: str,
     # THE MULTITYPE PROPAGATOR SETTINGS
     termination_condition = propagation_setup.propagator.time_termination(initial_epoch + simulation_time, True)
 
-    # TRANSLATIONAL PROPAGATOR SETTINGS FOR MODELS S, A1, B AND C.
-    if model in ['S', 'A1', 'B', 'C']:
-        if model in ['B', 'C']: initial_translational_state = initial_state[:6]
-        else: initial_translational_state = initial_state
-        translational_propagator_settings = get_translational_dynamics_propagator(bodies,
-                                                                                  bodies_to_propagate,
-                                                                                  central_bodies,
-                                                                                  initial_epoch,
-                                                                                  initial_translational_state,
-                                                                                  integrator_settings,
-                                                                                  termination_condition,
-                                                                                  dependent_variables)
+    # TRANSLATIONAL PROPAGATOR SETTINGS FOR ALL MODELS.
+    if model in ['C', 'E']: initial_translational_state = initial_state[:6]
+    else: initial_translational_state = initial_state
+    translational_propagator_settings = get_translational_dynamics_propagator(bodies,
+                                                                              bodies_to_propagate,
+                                                                              central_bodies,
+                                                                              initial_epoch,
+                                                                              initial_translational_state,
+                                                                              integrator_settings,
+                                                                              termination_condition,
+                                                                              dependent_variables)
 
-        if model in ['S', 'A1']: settings_to_return = translational_propagator_settings
+    if model in ['S', 'U']:
+        settings_to_return = translational_propagator_settings
+    else:
 
-    # ROTATIONAL PROPAGATOR SETTINGS FOR MODELS A2, B AND C.
-    if model in ['A2', 'B', 'C']:
-        if model in ['B', 'C']: initial_rotational_state = initial_state[6:]
-        else: initial_rotational_state = initial_state
+        # ROTATIONAL PROPAGATOR SETTINGS FOR MODELS C AND E.
+        initial_rotational_state = initial_state[6:]
         rotational_propagator_settings = get_rotational_dynamics_propagator(bodies,
                                                                             bodies_to_propagate,
                                                                             central_bodies,
@@ -584,10 +587,7 @@ def get_propagator_settings(model: str,
                                                                             termination_condition,
                                                                             dependent_variables)
 
-        if model == 'A2': settings_to_return = rotational_propagator_settings
-
-    # MULTI-TYPE DYNAMICS PROPAGATOR SETTINGS FOR MODELS B AND C
-    if model in ['B', 'C']:
+        # MULTI-TYPE DYNAMICS PROPAGATOR SETTINGS FOR MODELS C AND E
         propagator_list = [translational_propagator_settings, rotational_propagator_settings]
         combined_propagator_settings = propagation_setup.propagator.multitype(propagator_list,
                                                                               integrator_settings,
@@ -673,10 +673,9 @@ def get_translational_dynamics_propagator(bodies: numerical_simulation.environme
 
 def get_undamped_initial_state_at_epoch(bodies: numerical_simulation.environment.SystemOfBodies,
                                         model: str,
-                                        epoch: float,
-                                        phobos_mean_rotational_rate: float = 0.000228035245) -> np.ndarray:
+                                        epoch: float) -> np.ndarray:
 
-    if model not in ['A2', 'B', 'C']:
+    if model not in ['C', 'E']:
         raise ValueError('Model does not require a call to this function.')
 
     phobos_ephemeris = bodies.get('Phobos').ephemeris
@@ -699,8 +698,7 @@ def get_undamped_initial_state_at_epoch(bodies: numerical_simulation.environment
     else:
         raise TypeError('Unsupported rotation.')
 
-    if model == 'A2': full_state = rotational_state
-    else: full_state = np.concatenate((translational_state, rotational_state), 0)
+    full_state = np.concatenate((translational_state, rotational_state), 0)
 
     return full_state
 
@@ -714,57 +712,56 @@ def perform_propagator_checks(bodies: numerical_simulation.environment.SystemOfB
         -> None:
 
     # Check if the model is valid or not.
-    if model not in ['S', 'A1', 'A2', 'B', 'C']:
+    if model not in ['S', 'U', 'C', 'E']:
         raise ValueError('The model you provided is not supported.')
 
-    # Make sure that the libration corresponds to the model (i.e. 0 for model S and 1.1 for model A1).
+    # Make sure that the libration corresponds to the model (i.e. 0 for model S and 1.1 for model U).
     try:
         if bodies.get('Phobos').rotation_model.libration_calculator is not None: libration = True
         else: libration = False
     except:
         libration = False
-    if model in ['A2', 'B', 'C']: correct_rotation = True
+    if model in ['C', 'E']: correct_rotation = True
     elif model == 'S' and not libration: correct_rotation = True
-    elif model == 'A1' and libration: correct_rotation = True
+    elif model == 'U' and libration: correct_rotation = True
     else: correct_rotation = False
     if not correct_rotation:
         warnings.warn('The rotation of Phobos does not correspond to the selected model')
 
     # Make sure that the gravity field corresponds to the selected model
     quad_gravity = sum(sum(abs(bodies.get('Phobos').gravity_field_model.sine_coefficients))) == 0.0
-    if model in ['S', 'A1', 'A2', 'B'] and quad_gravity: correct_gravity = True
-    elif model == 'C' and not quad_gravity: correct_gravity = True
+    if model in ['S', 'U', 'C'] and quad_gravity: correct_gravity = True
+    elif model == 'E' and not quad_gravity: correct_gravity = True
     else: correct_gravity = False
     if not correct_gravity:
         warnings.warn('The gravity field of Phobos does not correspond to the selected model.')
 
     # Check, for one, that the state vector is compatible with the model, and for two, that ephemeris are correct.
-    if model in ['S', 'A1'] and len(initial_state) == 6: correct_initial_state = True
-    elif model == 'A2' and len(initial_state) == 7: correct_initial_state = True
-    elif model in ['B', 'C'] and len(initial_state) == 13: correct_initial_state = True
+    if model in ['S', 'U'] and len(initial_state) == 6: correct_initial_state = True
+    elif model in ['C', 'E'] and len(initial_state) == 13: correct_initial_state = True
     else: correct_initial_state = False
     if not correct_initial_state:
         raise ValueError('The state vector provided is not compatible with the model selected.')
 
-    # If the selected model is A2, the ephemeris of Phobos will be used. Make sure there is no dangerous (inter/extra)polation
-    if model == 'A2'and type(bodies.get('Phobos').ephemeris) is numerical_simulation.environment.TabulatedEphemeris:
-        out_of_bounds = initial_epoch == bodies.get('Phobos').ephemeris.interpolator.get_independent_values()[0] > \
-                        initial_epoch or bodies.get('Phobos').ephemeris.interpolator.get_independent_values()[-1] < \
-                        initial_epoch + simulation_time
-        if out_of_bounds:
-            warnings.warn(
-                'Your choice of model will make use of the ephemeris of Phobos. However, the available ephemeris does not'
-                ' cover the entire domain of the selected simulation time. Values for the state will be extrapolated '
-                'for those times not covered by your ephemeris. These results are not to be trusted.' )
-        interpolation = initial_epoch == bodies.get('Phobos').ephemeris.interpolator.get_independent_values()[3] > \
-                        initial_epoch or bodies.get('Phobos').ephemeris.interpolator.get_independent_values()[-4] < \
-                        initial_epoch + simulation_time
-        if interpolation:
-            warnings.warn(
-                'Your choice of model will make use of the ephemeris of Phobos. Your simulation starts exactly'
-                ' on the first data point of the available ephemeris. It is likely that your integrator will '
-                'have to interpolate between the first 4 data points provided in the ephemeris. Interpolation '
-                'in this range is deficient. Results are not to be trusted.' )
+    # # If the selected model is A2, the ephemeris of Phobos will be used. Make sure there is no dangerous (inter/extra)polation
+    # if model == 'A2'and type(bodies.get('Phobos').ephemeris) is numerical_simulation.environment.TabulatedEphemeris:
+    #     out_of_bounds = initial_epoch == bodies.get('Phobos').ephemeris.interpolator.get_independent_values()[0] > \
+    #                     initial_epoch or bodies.get('Phobos').ephemeris.interpolator.get_independent_values()[-1] < \
+    #                     initial_epoch + simulation_time
+    #     if out_of_bounds:
+    #         warnings.warn(
+    #             'Your choice of model will make use of the ephemeris of Phobos. However, the available ephemeris does not'
+    #             ' cover the entire domain of the selected simulation time. Values for the state will be extrapolated '
+    #             'for those times not covered by your ephemeris. These results are not to be trusted.' )
+    #     interpolation = initial_epoch == bodies.get('Phobos').ephemeris.interpolator.get_independent_values()[3] > \
+    #                     initial_epoch or bodies.get('Phobos').ephemeris.interpolator.get_independent_values()[-4] < \
+    #                     initial_epoch + simulation_time
+    #     if interpolation:
+    #         warnings.warn(
+    #             'Your choice of model will make use of the ephemeris of Phobos. Your simulation starts exactly'
+    #             ' on the first data point of the available ephemeris. It is likely that your integrator will '
+    #             'have to interpolate between the first 4 data points provided in the ephemeris. Interpolation '
+    #             'in this range is deficient. Results are not to be trusted.' )
 
     return
 
@@ -837,7 +834,7 @@ class EstimationSettings:
     def compute_eccentricity_of_observation_model(self) \
             -> float:
 
-        dependents_file = os.getcwd() + '/ephemeris/associated-dependents/' + self.observation_settings[
+        dependents_file = cwd + '/ephemeris/associated-dependents/' + self.observation_settings[
             'observation model'].lower() + '.dat'
         dependents = read_vector_history_from_file(dependents_file)
         eccentricity = compute_eccentricity_from_dependent_variables(dependents)
@@ -859,15 +856,15 @@ class EstimationSettings:
         else:
             batch = ''
 
-        os.makedirs(os.getcwd() + '/estimation-results/' + estimation_type + 'logs/', exist_ok = True)
+        os.makedirs(cwd + '/estimation-results/' + estimation_type + 'logs/', exist_ok = True)
 
         if batch == '':
-            copyfile(self.source_file, os.getcwd() + '/estimation-results/' + estimation_type + 'logs/' + sim_name + '.log')
-            save_dir = os.getcwd() + '/estimation-results/' + estimation_type + sim_name + '/'
+            copyfile(self.source_file, cwd + '/estimation-results/' + estimation_type + 'logs/' + sim_name + '.log')
+            save_dir = cwd + '/estimation-results/' + estimation_type + sim_name + '/'
 
         else:
-            copyfile(self.source_file, os.getcwd() + '/estimation-results/' + estimation_type + 'logs/' + batch + '.log')
-            save_dir = os.getcwd() + '/estimation-results/' + estimation_type + batch + '/'
+            copyfile(self.source_file, cwd + '/estimation-results/' + estimation_type + 'logs/' + batch + '.log')
+            save_dir = cwd + '/estimation-results/' + estimation_type + batch + '/'
 
         os.makedirs(save_dir, exist_ok = True)
         copyfile(self.source_file, save_dir + 'settings.log')
@@ -947,7 +944,7 @@ class EstimationSettings:
             else:
                 model = self.observation_settings['observation model']
 
-        if model in ['S', 'A1']:
+        if model in ['S', 'U']:
             raise ValueError('You\'re in the wrong place my dude')
 
         trash, ephemeris = retrieve_ephemeris_files(model)
@@ -976,15 +973,12 @@ class EstimationSettings:
         else:
             model = self.observation_settings['observation model']
 
-        if model != 'A2':
-            initial_translational_state = self.get_initial_translational_state(model_type, model)
-        if model in ['A2', 'B', 'C']:
+        initial_translational_state = self.get_initial_translational_state(model_type, model)
+        if model in ['C', 'E']:
             initial_rotational_state = self.get_initial_rotational_state(model_type, model)
 
-        if model in ['S', 'A1']:
+        if model in ['S', 'U']:
             initial_state = initial_translational_state
-        elif model == 'A2':
-            initial_state = initial_rotational_state
         else:
             initial_state = np.concatenate((initial_translational_state, initial_rotational_state))
 
@@ -992,9 +986,6 @@ class EstimationSettings:
 
     def get_initial_translational_state(self, model_type: str, model: str = '') \
             -> np.ndarray:
-
-        if self.estimation_settings['estimation model'] == 'A2':
-            raise ValueError('You\'re in the wrong place my dude')
 
         if model == '':
             if model_type == 'estimation':
@@ -1022,14 +1013,14 @@ class EstimationSettings:
     def get_length_of_estimated_state(self) \
             -> int:
 
-        if self.estimation_settings['estimation model'] in ['S', 'A1']:
-            length_of_estimated_state = 6
-        elif self.estimation_settings['estimation model'] == 'A2':
-            length_of_estimated_state = 7
-        else:
-            length_of_estimated_state = 13
+        return 6
 
-        return length_of_estimated_state
+        # if self.estimation_settings['estimation model'] in ['S', 'U']:
+        #     length_of_estimated_state = 6
+        # else:
+        #     length_of_estimated_state = 13
+        #
+        # return length_of_estimated_state
 
     def get_observation_times(self, estimation_idx: int = 0) \
             -> list[float]:
@@ -1053,16 +1044,13 @@ class EstimationSettings:
             parameter_list = [parameter_list]
         for parameter in parameter_list:
             if parameter == 'initial state':
-                if self.estimation_settings['estimation model'] == 'A2':
-                    translational_state_legends = []
-                else:
-                    translational_state_legends = [r'$x_o$', r'$y_o$', r'$z_o$', r'$v_{x,o}$', r'$v_{y,o}$', r'$v_{z,o}$']
-                if self.estimation_settings['estimation model'] in ['A2', 'B', 'C']:
+                translational_state_legends = [r'$x_o$', r'$y_o$', r'$z_o$', r'$v_{x,o}$', r'$v_{y,o}$', r'$v_{z,o}$']
+                if self.estimation_settings['estimation model'] in ['C', 'E']:
                     rotational_state_legends = [r'$q_{0,o}$', r'$q_{1,o}$', r'$q_{2,o}$', r'$q_{3,o}$', r'$\omega_{1,o}$', r'$\omega_{2,o}$', r'$\omega_{3,o}$']
                 else:
                     rotational_state_legends = []
                 legends = legends + translational_state_legends + rotational_state_legends
-            elif parameter == 'A':
+            elif parameter == 'B':
                 legends = legends + [r'$B$']
             elif parameter == 'C20':
                 legends = legends + [r'$C_{2,0}$']
@@ -1083,17 +1071,15 @@ class EstimationSettings:
         for parameter in parameter_list:
             if parameter == 'initial state':
                 true_initial_state = self.get_initial_state('true')
-                if self.estimation_settings['estimation model'] in ['S', 'A1']:
+                if self.estimation_settings['estimation model'] in ['S', 'U']:
                     true_initial_state = true_initial_state[:6]
-                if self.estimation_settings['estimation model'] == 'A2':
-                    true_initial_state = true_initial_state[6:]
                 true_parameters = true_parameters + list(true_initial_state)
-            elif parameter == 'A':
-                if self.observation_settings['observation model'] == 'A1':
+            elif parameter == 'B':
+                if self.observation_settings['observation model'] == 'U':
                     true_libration = bodies.get('Phobos').rotation_model.libration_calculator.get_scaled_libration_amplitude()
                 else:
                     true_libration = compute_scaled_libration_amplitude_from_dependent_variables(
-                        read_vector_history_from_file(os.getcwd() + '/ephemeris/associated-dependents/' + self.observation_settings['observation model'].lower() + '.dat')
+                        read_vector_history_from_file(cwd + '/ephemeris/associated-dependents/' + self.observation_settings['observation model'].lower() + '.dat')
                     )
                 true_parameters = true_parameters + [true_libration]
             elif parameter == 'C20':
@@ -1131,6 +1117,10 @@ class EstimationSettings:
                 dict_value = line.split('#')[0]  # Take everything that is NOT a comment
                 while dict_value[-1] == ' ' or dict_value[-1] == '\t': dict_value = dict_value[:-1]  # Remove all trailing spaces or tabs
                 dict_value = dict_value.split(':')[1].removesuffix('\n').replace('\t', '')  # Take the value itself (everything after the colon).
+                if dict_value == '':
+                    dicts[dict_idx][dict_key] = dict_value
+                    continue
+
                 while dict_value[0] == ' ' or dict_value[0] == '\t': dict_value = dict_value[1:]  # Remove all preceding spaces or tabs
 
                 # A SPECIAL CASE HERE IS THAT THERE IS A UNIT IN THE INPUT (MINUTE, DAY, YEAR, ...)
@@ -1214,7 +1204,7 @@ class EstimationSettings:
     def run_diagnostics_on_settings(self) \
             -> None:
 
-        if self.estimation_settings['estimation model'] not in ['S', 'A1', 'A2', 'B', 'C']:
+        if self.estimation_settings['estimation model'] not in ['S', 'U', 'C', 'E']:
             raise ValueError('Invalid estimation model.')
 
         if self.observation_settings['observation model'] ==  self.estimation_settings['estimation model'] and not self.test_functionalities['test mode']:
@@ -1222,7 +1212,7 @@ class EstimationSettings:
                           'that your initial guess for the estimated parameters will be by definition the actual '
                           'solution to your least squares problem.')
 
-        if self.observation_settings['observation model'] in ['S', 'A1'] and not self.test_functionalities['test mode']:
+        if self.observation_settings['observation model'] in ['S', 'U'] and not self.test_functionalities['test mode']:
             raise ValueError('The observation model you have selected is not supposed to be used as such outside of '
                              'Test Mode. The program has safely stopped now before shit breaks in mores spectacular '
                              'ways.')
@@ -1236,13 +1226,13 @@ class EstimationSettings:
 
         model = self.estimation_settings['estimation model']
         obs = self.observation_settings['observation type']
-        libration_estimated = 'A' in self.estimation_settings['estimated parameters']
+        libration_estimated = 'B' in self.estimation_settings['estimated parameters']
 
-        if (model == 'A1' and obs == 'orientation') or (model == 'A2' and obs == 'position'):
+        if model == 'U' and obs == 'orientation':
             raise ValueError('The selected estimation model (' + model + ') is incompatible with the selected '
                                                                          'observation type (' + obs + ').')
 
-        if model in ['A2', 'B', 'C'] and libration_estimated:
+        if model in ['C', 'E'] and libration_estimated:
             raise ValueError('The selected estimation model (' + model + ') is incompatible with the selected '
                                                                          'estimation of the libration amplitude')
 
@@ -1264,14 +1254,18 @@ class EstimationSettings:
         if t0_o < t0_e or sum(tf_o > tf_e):
             warnings.warn('Some of your observations are outside your estimation period. They will be ignored.')
 
-        if 'A' in params and 'C20' in params: ill_posedness = True
-        elif 'A' in params and 'C22' in params: ill_posedness = True
+        if 'B' in params and 'C20' in params: ill_posedness = True
+        elif 'B' in params and 'C22' in params: ill_posedness = True
         elif 'C20' in params and 'C22' in params: ill_posedness = True
-        elif 'A' in params and 'C20' in params and 'C22' in params: ill_posedness = True
+        elif 'B' in params and 'C20' in params and 'C22' in params: ill_posedness = True
         else: ill_posedness = False
         if ill_posedness:
             warnings.warn('Your estimated parameters include combinations that are known to be prone to ill-posedness of'
-                          ' the least squares problem. Expect large condition numbers.')
+                          ' the least squares problem. Expect high correlations.')
+
+        if self.test_functionalities['test mode'] and self.estimation_settings['estimation model'] == self.observation_settings['observation model']:
+            warnings.warn('Test mode was selected, but the observation and estimation models are different. Are you '
+                          'sure this is what you want?')
 
         if not self.test_functionalities['test mode'] and self.estimation_settings['estimation model'] == self.observation_settings['observation model']:
             warnings.warn('Test mode was not selected, yet the observation and estimation models are identical. First '
@@ -1474,7 +1468,7 @@ def get_parameter_set(estimated_parameters: list[str],
     else:
         raise ValueError('(get_parameter_set): Propagator settings required but not provided.')
 
-    if 'A' in estimated_parameters:
+    if 'B' in estimated_parameters:
         parameter_settings = parameter_settings + [estimation_setup.parameter.scaled_longitude_libration_amplitude('Phobos')]
     if 'C20' in estimated_parameters and 'C22' in estimated_parameters:
         parameter_settings = parameter_settings + [
@@ -1499,7 +1493,7 @@ def print_estimated_parameters(estimated_parameters: list[str]) \
 
     if 'initial state' in estimated_parameters:
         parameters_str = parameters_str + '\t- Initial state\n'
-    if 'A' in estimated_parameters:
+    if 'B' in estimated_parameters:
         parameters_str = parameters_str + '\t- Libration amplitude\n'
     if 'C20' in estimated_parameters and 'C22' in estimated_parameters:
         parameters_str = parameters_str + '\t- C20\n'
@@ -1577,7 +1571,7 @@ def plot_kepler_elements(keplerian_history: np.ndarray, title: str = '') \
     return
 
 
-def run_model_a1_checks(checks: list[int],
+def run_model_u_checks(checks: list[int],
                         bodies: numerical_simulation.environment.SystemOfBodies,
                         simulator: numerical_simulation.SingleArcSimulator) \
         -> None:
@@ -1670,272 +1664,11 @@ def run_model_a1_checks(checks: list[int],
         plt.ylabel(r'Acceleration [m/s²]')
         plt.legend()
         plt.grid()
-        
-        
-def run_model_a2_checks(checks: list[int],
-                        bodies: numerical_simulation.environment.SystemOfBodies,
-                        damping_results: numerical_simulation.propagation.RotationalProperModeDampingResults,
-                        check_undamped: bool) \
-        -> None:
-    
-    if sum(checks) > 0:
 
-        mars_mu = bodies.get('Mars').gravitational_parameter
-        states = dict2array(damping_results.forward_backward_states[-1][1])
-        dependents = dict2array(damping_results.forward_backward_dependent_variables[-1][1])
-
-        mean_motion_history = dependents[:,[0,6]]
-        mean_motion_history[:,1] = np.sqrt(mars_mu / mean_motion_history[:,1] ** 3)
-        average_mean_motion, trash = average_over_integer_number_of_orbits(mean_motion_history,dependents[:,[0,6,7,8,9,10,11]])
-
-        if check_undamped:
-            states_undamped = dict2array(damping_results.forward_backward_states[0][0])
-            dependents_undamped = dict2array(damping_results.forward_backward_dependent_variables[0][0])
-
-        epochs_array = states[:,0]
-
-    # Trajectory
-    if checks[0]:
-        if check_undamped:
-            cartesian_history_undamped = array2dict(states_undamped[:,[0,1,2,3,4,5,6]])
-            trajectory_3d(cartesian_history_undamped, ['Phobos'], 'Mars')
-        cartesian_history = array2dict(states[:,[0,1,2,3,4,5,6]])
-        trajectory_3d(cartesian_history, ['Phobos'], 'Mars')
-
-    # Orbit does not blow up.
-    if checks[1]:
-        if check_undamped:
-            keplerian_history_undamped = dependents_undamped[:,[0,7,8,9,10,11,12]]
-            plot_kepler_elements(keplerian_history_undamped, title='Undamped COEs')
-        keplerian_history = dependents[:,[0,7,8,9,10,11,12]]
-        plot_kepler_elements(keplerian_history, title='Damped COEs')
-
-    # Orbit is equatorial
-    if checks[2]:
-        if check_undamped:
-            sub_phobian_point_undamped = dependents_undamped[:,[0,14,15]]
-            sub_phobian_point_undamped[:,1:] = bring_inside_bounds(sub_phobian_point_undamped[:,1:], -PI, PI, include='upper')
-        sub_phobian_point = dependents[:,[0,14,15]]
-        sub_phobian_point[:,1:] = bring_inside_bounds(sub_phobian_point[:, 1:], -PI, PI, include='upper')
-
-        if check_undamped:
-            plt.figure()
-            plt.scatter(sub_phobian_point_undamped[:,2] * 360.0 / TWOPI,
-                        sub_phobian_point_undamped[:,1] * 360.0 / TWOPI, label='Undamped')
-            plt.scatter(sub_phobian_point[:,2] * 360.0 / TWOPI, sub_phobian_point[:, 1] * 360.0 / TWOPI,
-                        label='Damped', marker='+')
-            plt.grid()
-            plt.title('Sub-phobian point')
-            plt.xlabel('LON [º]')
-            plt.ylabel('LAT [º]')
-            plt.legend()
-
-            plt.figure()
-            plt.plot(epochs_array / 86400.0, sub_phobian_point_undamped[:,1] * 360.0 / TWOPI, label=r'$Lat$')
-            plt.plot(epochs_array / 86400.0, sub_phobian_point_undamped[:,2] * 360.0 / TWOPI, label=r'$Lon$')
-            plt.legend()
-            plt.grid()
-            plt.title('Undamped sub-phobian point')
-            plt.xlabel('Time [days since J2000]')
-            plt.ylabel('Coordinate [º]')
-
-        plt.figure()
-        plt.plot(epochs_array / 86400.0, sub_phobian_point[:,1] * 360.0 / TWOPI, label=r'$Lat$')
-        plt.plot(epochs_array / 86400.0, sub_phobian_point[:,2] * 360.0 / TWOPI, label=r'$Lon$')
-        plt.legend()
-        plt.grid()
-        plt.title('Damped sub-phobian point')
-        plt.xlabel('Time [days since J2000]')
-        plt.ylabel('Coordinate [º]')
-
-    # Phobos' Euler angles. In a torque-free environment, the first two are constant and the third grows linearly as
-    # indicated by the angular speed. This happens both in the undamped and damped cases. In an environment with torques,
-    # the undamped angles contain free modes while the damped ones do not.
-    if checks[3]:
-        normal_mode = get_longitudinal_normal_mode_from_inertia_tensor(bodies.get('Phobos').inertia_tensor,
-                                                                       phobos_mean_rotational_rate)
-        clean_signal = [TWOPI, 1]
-        if check_undamped:
-            euler_history_undamped = dependents_undamped[:,[0,1,2,3]]
-            euler_history_undamped[:,1:] = bring_inside_bounds(euler_history_undamped[:,1:], 0.0, TWOPI)
-            euler_fourier_undamped = fourier_transform(euler_history_undamped, clean_signal)
-        euler_history = dependents[:,[0,1,2,3]]
-        euler_history[:,1:] = bring_inside_bounds(euler_history[:,1:], 0.0, TWOPI)
-        euler_fourier = fourier_transform(euler_history, clean_signal)
-
-        if check_undamped:
-            plt.figure()
-            plt.plot(epochs_array / 86400.0, euler_history_undamped[:,1] * 360.0 / TWOPI, label=r'$\psi$')
-            plt.plot(epochs_array / 86400.0, euler_history_undamped[:,2] * 360.0 / TWOPI, label=r'$\theta$')
-            # plt.plot(epochs_array / 86400.0, euler_history_undamped[:,3] * 360.0 / TWOPI, label = r'$\phi$')
-            plt.legend()
-            plt.grid()
-            # plt.xlim([0.0, 3.5])
-            plt.title('Undamped Euler angles')
-            plt.xlabel('Time [days since J2000]')
-            plt.ylabel('Angle [º]')
-
-        plt.figure()
-        plt.plot(epochs_array / 86400.0, euler_history[:,1] * 360.0 / TWOPI, label=r'$\psi$')
-        plt.plot(epochs_array / 86400.0, euler_history[:,2] * 360.0 / TWOPI, label=r'$\theta$')
-        # plt.plot(epochs_array / 86400.0, euler_history[:,3] * 360.0 / TWOPI, label = r'$\phi$')
-        plt.legend()
-        plt.grid()
-        # plt.xlim([0.0, 3.5])
-        plt.title('Damped Euler angles')
-        plt.xlabel('Time [days since J2000]')
-        plt.ylabel('Angle [º]')
-
-        if check_undamped:
-            plt.figure()
-            plt.loglog(euler_fourier_undamped[:,0] * 86400.0, euler_fourier_undamped[:,1] * 360.0 / TWOPI, label=r'$\psi$', marker='.')
-            plt.loglog(euler_fourier_undamped[:,0] * 86400.0, euler_fourier_undamped[:,1] * 360.0 / TWOPI, label=r'$\phi$', marker='.')
-            plt.axvline(phobos_mean_rotational_rate * 86400.0, ls='dashed', c='r', label='Phobos\' mean motion (and integer multiples)')
-            plt.axvline(normal_mode * 86400.0, ls='dashed', c='k', label='Longitudinal normal mode')
-            plt.axvline(2 * average_mean_motion * 86400.0, ls='dashed', c='r')
-            plt.axvline(3 * average_mean_motion * 86400.0, ls='dashed', c='r')
-            plt.title(r'Undamped frequency content')
-            plt.xlabel(r'$\omega$ [rad/day]')
-            plt.ylabel(r'$A [º]$')
-            # plt.xlim([0, 70])
-            plt.grid()
-            plt.legend()
-
-        plt.figure()
-        plt.loglog(euler_fourier[:,0] * 86400.0, euler_fourier[:,1] * 360 / TWOPI, label=r'$\psi$', marker='.')
-        plt.loglog(euler_fourier[:,0] * 86400.0, euler_fourier[:,2] * 360 / TWOPI * 360 / TWOPI, label=r'$\theta$', marker='.')
-        plt.loglog(euler_fourier[:,0] * 86400.0, euler_fourier[:,3] * 360 / TWOPI * 360 / TWOPI, label=r'$\phi$', marker='.')
-        plt.axvline(phobos_mean_rotational_rate * 86400.0, ls='dashed', c='r', label='Phobos\' mean motion (and integer multiples)')
-        plt.axvline(normal_mode * 86400.0, ls='dashed', c='k', label='Longitudinal normal mode')
-        plt.axvline(2 * average_mean_motion * 86400.0, ls='dashed', c='r')
-        plt.axvline(3 * average_mean_motion * 86400.0, ls='dashed', c='r')
-        plt.title(r'Damped frequency content')
-        plt.xlabel(r'$\omega$ [rad/day]')
-        plt.ylabel(r'$A [º]$')
-        # plt.xlim([0, 70])
-        plt.grid()
-        plt.legend()
-
-    # Phobos' x axis points towards Mars with a once-per-orbit longitudinal libration with amplitude as specified above.
-    if checks[4]:
-        normal_mode = get_longitudinal_normal_mode_from_inertia_tensor(bodies.get('Phobos').inertia_tensor,
-                                                                       phobos_mean_rotational_rate)
-        if check_undamped:
-            sub_martian_point_undamped = dict2array(extract_elements_from_history(dependents_undamped, [4, 5]))
-            sub_martian_point_undamped[:, 1:] = bring_inside_bounds(sub_martian_point_undamped[:, 1:], -PI, PI,
-                                                                    include='upper')
-            libration_history_undamped = extract_elements_from_history(dependents_undamped, 5)
-            libration_freq_undamped, libration_amp_undamped = fourier_transform(
-                libration_history_undamped)
-        sub_martian_point = dict2array(extract_elements_from_history(dependents, [4, 5]))
-        sub_martian_point[:, 1:] = bring_inside_bounds(sub_martian_point[:,1:], -PI, PI, include='upper')
-        libration_history = extract_elements_from_history(dependents, 5)
-        libration_freq, libration_amp = fourier_transform(libration_history)
-
-        if check_undamped:
-            plt.figure()
-            plt.scatter(sub_martian_point_undamped[:, 2] * 360.0 / TWOPI,
-                        sub_martian_point_undamped[:, 1] * 360.0 / TWOPI, label='Undamped')
-            plt.scatter(sub_martian_point[:, 2] * 360.0 / TWOPI, sub_martian_point[:, 1] * 360.0 / TWOPI,
-                        label='Damped', marker='+')
-            plt.grid()
-            plt.title(r'Sub-martian point')
-            plt.xlabel('LON [º]')
-            plt.ylabel('LAT [º]')
-            plt.legend()
-
-            plt.figure()
-            plt.plot(epochs_array / 86400.0, sub_martian_point_undamped[:, 1] * 360.0 / TWOPI, label=r'$Lat$')
-            plt.plot(epochs_array / 86400.0, sub_martian_point_undamped[:, 2] * 360.0 / TWOPI, label=r'$Lon$')
-            plt.legend()
-            plt.grid()
-            # plt.title('Undamped sub-martian point ($\omega = ' + str(phobos_mean_rotational_rate) + '$ rad/s)')
-            plt.title('Undamped sub-martian point')
-            plt.xlabel('Time [days since J2000]')
-            plt.ylabel('Coordinate [º]')
-
-        plt.figure()
-        plt.scatter(sub_martian_point[:, 2] * 360.0 / TWOPI, sub_martian_point[:, 1] * 360.0 / TWOPI)
-        plt.grid()
-        plt.title(r'Damped sub-martian point')
-        plt.xlabel('LON [º]')
-        plt.ylabel('LAT [º]')
-
-        plt.figure()
-        plt.plot(epochs_array / 86400.0, sub_martian_point[:, 1] * 360.0 / TWOPI, label=r'$Lat$')
-        plt.plot(epochs_array / 86400.0, sub_martian_point[:, 2] * 360.0 / TWOPI, label=r'$Lon$')
-        plt.legend()
-        plt.grid()
-        plt.title('Damped sub-martian point')
-        plt.xlabel('Time [days since J2000]')
-        plt.ylabel('Coordinate [º]')
-
-        if check_undamped:
-            plt.figure()
-            plt.loglog(libration_freq_undamped * 86400.0, libration_amp_undamped * 360 / TWOPI, marker='.')
-            plt.axline((phobos_mean_rotational_rate * 86400.0, 0), (phobos_mean_rotational_rate * 86400.0, 1),
-                       ls='dashed', c='r', label='Phobos\' mean motion (and integer multiples)')
-            plt.axline((normal_mode * 86400.0, 0), (normal_mode * 86400.0, 1), ls='dashed', c='k',
-                       label='Longitudinal normal mode')
-            plt.axline((2 * average_mean_motion * 86400.0, 0), (2 * average_mean_motion * 86400.0, 1), ls='dashed',
-                       c='r')
-            plt.axline((3 * average_mean_motion * 86400.0, 0), (3 * average_mean_motion * 86400.0, 1), ls='dashed',
-                       c='r')
-            plt.title(r'Undamped libration frequency content')
-            plt.xlabel(r'$\omega$ [rad/day]')
-            plt.ylabel(r'$A [º]$')
-            plt.grid()
-            plt.legend()
-
-        plt.figure()
-        plt.loglog(libration_freq * 86400.0, libration_amp * 360 / TWOPI, marker='.')
-        plt.axline((phobos_mean_rotational_rate * 86400.0, 0), (phobos_mean_rotational_rate * 86400.0, 1), ls='dashed',
-                   c='r', label='Phobos\' mean motion (and integer multiples)')
-        plt.axline((normal_mode * 86400.0, 0), (normal_mode * 86400.0, 1), ls='dashed', c='k',
-                   label='Longitudinal normal mode')
-        plt.axline((2 * average_mean_motion * 86400.0, 0), (2 * average_mean_motion * 86400.0, 1), ls='dashed', c='r')
-        plt.axline((3 * average_mean_motion * 86400.0, 0), (3 * average_mean_motion * 86400.0, 1), ls='dashed', c='r')
-        plt.title(r'Damped libration frequency content')
-        plt.xlabel(r'$\omega$ [rad/day]')
-        plt.ylabel(r'$A [º]$')
-        plt.grid()
-        plt.legend()
-
-    # # Torques exerted by third bodies
-    # if checks[5]:
-    #
-    #     # third_bodies = ['Sun', 'Earth', 'Moon', 'Mars', 'Deimos', 'Jupiter', 'Saturn']
-    #     third_bodies = ['Sun', 'Earth', 'Mars', 'Deimos', 'Jupiter']
-    #
-    #     if check_undamped:
-    #         third_body_torques_undamped = dict2array(
-    #             extract_elements_from_history(dependents_undamped, list(range(18, 23))))
-    #         plt.figure()
-    #         for idx, body in enumerate(third_bodies):
-    #             plt.semilogy(epochs_array / 86400.0, third_body_torques_undamped[:, idx + 1], label=body)
-    #         plt.title('Third body torques (undamped rotation)')
-    #         plt.xlabel('Time [days since J2000]')
-    #         plt.ylabel(r'Torque [N$\cdot$m]')
-    #         plt.yticks([1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15])
-    #         plt.legend()
-    #         plt.grid()
-    #
-    #     third_body_torques = dict2array(extract_elements_from_history(dependents_damped, list(range(18, 23))))
-    #     plt.figure()
-    #     for idx, body in enumerate(third_bodies):
-    #         plt.semilogy(epochs_array / 86400.0, third_body_torques[:, idx + 1], label=body)
-    #     plt.title('Third body torques')
-    #     plt.xlabel('Time [days since J2000]')
-    #     plt.ylabel(r'Torque [N$\cdot$m]')
-    #     plt.yticks([1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15])
-    #     plt.legend()
-    #     plt.grid()
-
-
-def run_model_b_checks(checks: list[int],
-                       bodies: numerical_simulation.environment.SystemOfBodies,
-                       damping_results: numerical_simulation.propagation.RotationalProperModeDampingResults,
-                       check_undamped: bool) \
+def run_models_c_and_e_checks(checks: list[int],
+                              bodies: numerical_simulation.environment.SystemOfBodies,
+                              damping_results: numerical_simulation.propagation.RotationalProperModeDampingResults,
+                              check_undamped: bool) \
         -> None:
 
     if sum(checks) > 0:
@@ -2206,7 +1939,7 @@ def arrange_derivatives_in_design_matrix(state_derivatives: list[dict[float, np.
                          'derivative dictionaries are required, only', len(state_derivatives), 'were provided.')
 
     columns = 6
-    if 'A' in settings.estimation_settings['estimated parameters']:
+    if 'B' in settings.estimation_settings['estimated parameters']:
         columns = columns + 1
         libration_extra = 1
     else:
@@ -2227,7 +1960,7 @@ def arrange_derivatives_in_design_matrix(state_derivatives: list[dict[float, np.
                 design_matrix[3*idx:3*(idx+1),col] = state_derivatives[col][epoch][:3]
 
     # Derivatives wrt libration amplitude (if any)
-    if 'A' in settings.estimation_settings['estimated parameters']:
+    if 'B' in settings.estimation_settings['estimated parameters']:
         for idx, epoch in enumerate(observation_times):
             design_matrix[3*idx:3*(idx+1),6] = state_derivatives[6][epoch][:3]
 
@@ -2351,12 +2084,12 @@ def compute_numerical_partials_wrt_scaled_libration_amplitude(bodies: numerical_
     pre_fit_libration_amplitude = bodies.get( 'Phobos').rotation_model.libration_calculator.get_scaled_libration_amplitude()
 
     bodies.get('Phobos').rotation_model.libration_calculator = numerical_simulation.environment.DirectLongitudeLibrationCalculator(pre_fit_libration_amplitude-step)
-    propagator_settings = get_propagator_settings('A1', bodies, initial_epoch, initial_state, simulation_time)
+    propagator_settings = get_propagator_settings('U', bodies, initial_epoch, initial_state, simulation_time)
     simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
     states_left = simulator.state_history
 
     bodies.get('Phobos').rotation_model.libration_calculator = numerical_simulation.environment.DirectLongitudeLibrationCalculator(pre_fit_libration_amplitude+step)
-    propagator_settings = get_propagator_settings('A1', bodies, initial_epoch, initial_state, simulation_time)
+    propagator_settings = get_propagator_settings('U', bodies, initial_epoch, initial_state, simulation_time)
     simulator = numerical_simulation.create_dynamics_simulator(bodies, propagator_settings)
     states_right = simulator.state_history
 
@@ -2425,16 +2158,16 @@ def perform_numerical_estimation(bodies: numerical_simulation.environment.System
     initial_estimation_epoch = settings.estimation_settings['initial estimation epoch']
     maximum_number_of_iterations = settings.ls_convergence_settings['maximum number of iterations']
 
-    pre_fit_parameters = np.zeros(settings.get_length_of_estimated_state() + ('A' in settings.estimation_settings['estimated parameters']) +
+    pre_fit_parameters = np.zeros(settings.get_length_of_estimated_state() + ('B' in settings.estimation_settings['estimated parameters']) +
                                   ('C20' in settings.estimation_settings['estimated parameters']) + ('C22' in settings.estimation_settings['estimated parameters']))
     pre_fit_parameters[:6] = propagator_settings.initial_states
-    if 'A' in settings.estimation_settings['estimated parameters']:
+    if 'B' in settings.estimation_settings['estimated parameters']:
         pre_fit_parameters[6] = bodies.get('Phobos').rotation_model.libration_calculator.get_scaled_libration_amplitude()
     if 'C20' in settings.estimation_settings['estimated parameters']:
-        pre_fit_parameters[6 + ('A' in settings.estimation_settings['estimated parameters'])] = (
+        pre_fit_parameters[6 + ('B' in settings.estimation_settings['estimated parameters'])] = (
             bodies.get('Phobos').gravity_field_model.cosine_coefficients)[2,0]
     if 'C22' in settings.estimation_settings['estimated parameters']:
-        pre_fit_parameters[6 + ('A' in settings.estimation_settings['estimated parameters']) +
+        pre_fit_parameters[6 + ('B' in settings.estimation_settings['estimated parameters']) +
                            ('C20' in settings.estimation_settings['estimated parameters'])] = (
             bodies.get('Phobos').gravity_field_model.cosine_coefficients)[2,2]
 
@@ -2465,7 +2198,7 @@ def perform_numerical_estimation(bodies: numerical_simulation.environment.System
         initial_state = pre_fit_parameters[:6]
         dx = compute_numerical_partials_wrt_initial_state_vector(bodies, propagator_settings)
 
-        if 'A' in settings.estimation_settings['estimated parameters']:
+        if 'B' in settings.estimation_settings['estimated parameters']:
             dx = dx + compute_numerical_partials_wrt_scaled_libration_amplitude(bodies,
                                                                                 initial_estimation_epoch,
                                                                                 initial_state,
@@ -2489,7 +2222,7 @@ def perform_numerical_estimation(bodies: numerical_simulation.environment.System
         parameter_evolution[current_iteration,:] = post_fit_parameters
 
         propagator_settings.initial_states = post_fit_parameters[:6]  # Update of initial state
-        if 'A' in settings.estimation_settings['estimated parameters']:
+        if 'B' in settings.estimation_settings['estimated parameters']:
             # In case C20 and/or C22 were estimated, we now how a new bodies object, on which we set the correct libration calculator.
             bodies.get('Phobos').rotation_model.libration_calculator = numerical_simulation.environment.DirectLongitudeLibrationCalculator(post_fit_parameters[6])
             libration_extra = 1
@@ -2498,7 +2231,7 @@ def perform_numerical_estimation(bodies: numerical_simulation.environment.System
 
         if 'C20' in settings.estimation_settings['estimated parameters'] or 'C22' in settings.estimation_settings['estimated parameters']:
             # Here we update the harmonic coefficients, for which we (might) have to re-create the whole bodies object. Let's try changing the gravity field model first.
-            # translational_ephemeris_file, rotational_ephemeris_file = retrieve_ephemeris_files('A1')
+            # translational_ephemeris_file, rotational_ephemeris_file = retrieve_ephemeris_files('U')
             # gravity_field_settings = get_gravitational_field('Phobos_body_fixed')
             coefficients_update = np.zeros_like(bodies.get('Phobos').gravity_field_model.cosine_coefficients)
             if 'C20' in settings.estimation_settings['estimated parameters']:
@@ -2518,7 +2251,7 @@ def perform_numerical_estimation(bodies: numerical_simulation.environment.System
             # print('Bodies:', bodies)
             # print('Mars:', bodies.get('Mars'))
             # print('Rotation:', bodies.get('Mars').rotation_model)
-            # bodies = get_solar_system('A1', translational_ephemeris_file, rotational_ephemeris_file)
+            # bodies = get_solar_system('U', translational_ephemeris_file, rotational_ephemeris_file)
             # print('POST')
             # print('Bodies:', bodies)
             # print('Mars:', bodies.get('Mars'))

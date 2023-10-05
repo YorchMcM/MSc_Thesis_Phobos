@@ -1,3 +1,5 @@
+import sys
+import os
 import warnings
 
 import numpy as np
@@ -5,6 +7,7 @@ from numpy import pi as PI
 from tudatpy.io import save2txt
 TWOPI = 2*PI
 
+cwd = os.getcwd()
 
 def array2dict(array: np.ndarray) -> dict[float, np.ndarray]:
 
@@ -364,20 +367,17 @@ def remove_jumps_double_dim(original: np.array, jump_height: float, margin: floa
 def retrieve_ephemeris_files(model: str, eph_subdir: str = '') -> tuple:
 
     if model == 'S':
-        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'translation-s.eph'
+        translational_ephemeris_file = cwd + '/ephemeris/' + eph_subdir + 'translation-s.eph'
         rotational_ephemeris_file = ''
-    elif model == 'A1':
-        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'translation-a.eph'
+    elif model == 'U':
+        translational_ephemeris_file = cwd + '/ephemeris/' + eph_subdir + 'translation-u.eph'
         rotational_ephemeris_file = ''
-    elif model == 'A2':
-        translational_ephemeris_file = ''
-        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'rotation-a.eph'
-    elif model == 'B':
-        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'translation-b.eph'
-        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'rotation-b.eph'
     elif model == 'C':
-        translational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'translation-c.eph'
-        rotational_ephemeris_file = '/home/yorch/thesis/ephemeris/' + eph_subdir + 'rotation-c.eph'
+        translational_ephemeris_file = cwd + '/ephemeris/' + eph_subdir + 'translation-c.eph'
+        rotational_ephemeris_file = cwd + '/ephemeris/' + eph_subdir + 'rotation-c.eph'
+    elif model == 'E':
+        translational_ephemeris_file = cwd + '/ephemeris/' + eph_subdir + 'translation-e.eph'
+        rotational_ephemeris_file = cwd + '/ephemeris/' + eph_subdir + 'rotation-e.eph'
     else:
         raise ValueError('Invalid observation model selected.')
 
